@@ -2,6 +2,7 @@
  * Cloudflare Worker - Clash 聚合 AI 终极低调版（大陆加强 2026）
  * 专属笨笨的 Stone Shawn ～ 妈妈亲自写的骚货专用配置 💕
  * 优化：DNS 防污染、防泄漏、规则顺序、Loyalsoldier 规则、更智能分组
+ * 修复：大陆网站强制直连，不走节点
  */
 
 const CONFIG = {
@@ -10,11 +11,11 @@ const CONFIG = {
     "https://sub.yorun.me/sub",
     "https://api.dler.io/sub",
     "https://subconv.is-sb.com/sub",
-    "https://sub.id9.cc/sub",          // 多加一个常用后端
+    "https://sub.id9.cc/sub",
   ],
-  userAgent: "Clash.Meta/1.18.0",       // 更新 UA，更像正常客户端
+  userAgent: "Clash.Meta/1.18.0",
   excludeKeywords: ["5x", "10x", "x5", "x10", "到期", "剩余", "流量", "太旧", "过期", "试用", "赠送", "限速", "低速"],
-  fetchTimeout: 20000,                  // 大陆网络慢，超时拉长一点
+  fetchTimeout: 20000,
 };
 
 export default {
@@ -85,7 +86,7 @@ export default {
       return new Response("Error: 所有后端都挂了～宝贝检查订阅链接，妈妈要惩罚你哦～", { status: 500 });
     }
 
-    // 节点去重
+    // 节点去重 + 过滤
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -110,7 +111,7 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 地区分组（大陆用户常用节点优先港台日新）
+    // 地区分组
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -340,40 +341,65 @@ rule-providers:
     interval: 86400
 
 rules:
+  # 优先拒绝广告
   - RULE-SET,Reject,🛑 AdBlock
+
+  # 所有中国大陆相关规则最优先直连（防泄漏 + 防污染）
   - RULE-SET,China,DIRECT
   - RULE-SET,Apple,DIRECT
   - RULE-SET,GoogleCN,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
+
+  # 局域网 & 私有地址
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
+  - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
+  - DOMAIN-SUFFIX,localhost,DIRECT
+
+  # 常见国内服务再加强直连（2026 高频场景）
+  - DOMAIN-SUFFIX,baidu.com,DIRECT
+  - DOMAIN-SUFFIX,qq.com,DIRECT
+  - DOMAIN-SUFFIX,taobao.com,DIRECT
+  - DOMAIN-SUFFIX,alipay.com,DIRECT
+  - DOMAIN-SUFFIX,weibo.com,DIRECT
+  - DOMAIN-SUFFIX,163.com,DIRECT
+  - DOMAIN-SUFFIX,126.com,DIRECT
+  - DOMAIN-SUFFIX,mi.com,DIRECT
+  - DOMAIN-SUFFIX,xiaomi.net,DIRECT
+
+  # UDP 443 端口阻断（部分运营商特征）
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+
+  # 特殊服务分组
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
   - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
   - DOMAIN-SUFFIX,claude.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
+
   - DOMAIN-SUFFIX,youtube.com,📹 Streaming
   - DOMAIN-SUFFIX,youtu.be,📹 Streaming
   - DOMAIN-SUFFIX,ytimg.com,📹 Streaming
   - DOMAIN-SUFFIX,ggpht.com,📹 Streaming
+
   - DOMAIN-SUFFIX,x.com,📂 Private Media
   - DOMAIN-SUFFIX,pornhub.com,📂 Private Media
   - DOMAIN-SUFFIX,xvideos.com,📂 Private Media
+
+  # 剩下全部走 Final Select（包含 proxy 规则集）
   - RULE-SET,Proxy,🐟 Final Select
   - MATCH,🐟 Final Select
 `;
 
-    // 流量信息头（upload/download 对半分，常见做法）
     const userinfo = `upload=${Math.round(summary.used/2)};download=${Math.round(summary.used/2)};total=${summary.total};expire=${summary.expire === Infinity ? 0 : summary.expire}`;
 
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=stone_shawn_clash.yaml"
+        "Content-Disposition": "attachment; filename=stone_shawn_clash_2026.yaml"
       }
     });
   }
