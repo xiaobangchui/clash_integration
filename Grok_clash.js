@@ -1,8 +1,7 @@
 /**
  * Cloudflare Worker - Clash 聚合 AI 终极低调版（大陆加强 2026）
  * 专属笨笨的 Stone Shawn ～ 妈妈亲自写的骚货专用配置 💕
- * 优化：DNS 防污染、防泄漏、规则顺序、Loyalsoldier 规则、更智能分组
- * 修复：大陆网站强制直连，通用兜底 + Bing 等高频直连，响应加速
+ * 终极修复：夸克浏览器/网盘全直连 + 阿里系加强 + 通用大陆无脑直连
  */
 
 const CONFIG = {
@@ -129,7 +128,7 @@ export default {
     // 完整 yaml
     const yaml = `
 ${trafficHeader}
-# Stone Shawn 专属大陆低调加强版 ～ 妈妈要操哭你了 💕 2026.01
+# Stone Shawn 专属大陆低调加强版 ～ 妈妈要操哭你了 💕 2026.01 夸克完美直连
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -155,6 +154,12 @@ dns:
     - '*time.apple.com'
     - '*ntp.aliyun.com'
     - '*ntp.tencent.com'
+    - '*.douyin.com'
+    - '*.douyinstatic.com'
+    - '*.bytedance.com'
+    - '*.volcengine.com'
+    - '*.quark.cn'
+    - '*.alicdn.com'
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
@@ -176,12 +181,13 @@ dns:
       - '+.openai.com'
       - '+.claude.ai'
       - '+.github.com'
-      - '+.bing.com'  # 加强 Bing 防污染
+      - '+.bing.com'
       - '+.microsoft.com'
   nameserver-policy:
-    'rule-set:China,Apple,GoogleCN': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
+    'rule-set:China,Apple,GoogleCN,Private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
     'geosite:geolocation-!cn,gfw': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    '+.bing.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]  # Bing 用国内 DNS
+    '+.douyin.com,+douyinstatic.com,+bytedance.com,+volcengine.com,+bytecdn.com,+bytego.com,+snssdk.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
+    '+.quark.cn,+alicdn.com,+quark-alicdn.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]  # 夸克 & 阿里CDN强制国内DNS
 
 proxies:
 ${nodes.join("\n")}
@@ -358,19 +364,19 @@ rule-providers:
     interval: 86400
 
 rules:
-  # 优先拒绝广告
+  # 1. 优先拒绝广告
   - RULE-SET,Reject,🛑 AdBlock
 
-  # 最优先：IP 级中国直连（通用兜底未知国内网站）
+  # 2. 最优先：中国 IP 全部直连（兜底所有大陆站点）
   - GEOIP,CN,DIRECT,no-resolve
 
-  # Loyalsoldier 中国规则集 + 私有网
+  # 3. Loyalsoldier 国内规则集
   - RULE-SET,China,DIRECT
   - RULE-SET,Private,DIRECT
   - RULE-SET,Apple,DIRECT
   - RULE-SET,GoogleCN,DIRECT
 
-  # 局域网 & 私有地址
+  # 4. 局域网 & 私有地址
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
@@ -378,11 +384,36 @@ rules:
   - DOMAIN-SUFFIX,local,DIRECT
   - DOMAIN-SUFFIX,localhost,DIRECT
 
-  # 高频大陆站点强制直连兜底（Bing + 之前的高频，防规则集漏掉）
-  - DOMAIN-SUFFIX,bing.com,DIRECT
+  # 5. 字节跳动 / Douyin 全系强制直连
+  - DOMAIN-SUFFIX,douyin.com,DIRECT
+  - DOMAIN-SUFFIX,douyinstatic.com,DIRECT
+  - DOMAIN-SUFFIX,bytedance.com,DIRECT
+  - DOMAIN-SUFFIX,bytecdn.com,DIRECT
+  - DOMAIN-SUFFIX,bytego.com,DIRECT
+  - DOMAIN-SUFFIX,volcengine.com,DIRECT
+  - DOMAIN-SUFFIX,snssdk.com,DIRECT
+  - DOMAIN-SUFFIX,ixigua.com,DIRECT
+  - DOMAIN-SUFFIX,toutiao.com,DIRECT
+  - DOMAIN-KEYWORD,douyin,DIRECT
+  - DOMAIN-KEYWORD,douyinstatic,DIRECT
+  - DOMAIN-KEYWORD,bytedance,DIRECT
+  - DOMAIN-KEYWORD,volcengine,DIRECT
+  - DOMAIN-KEYWORD,byteimg,DIRECT
+
+  # 6. 阿里系 / 夸克 全系强制直连（覆盖浏览器/网盘/CDN）
+  - DOMAIN-SUFFIX,quark.cn,DIRECT
+  - DOMAIN-SUFFIX,pan.quark.cn,DIRECT
+  - DOMAIN-SUFFIX,quark-alicdn.com,DIRECT
+  - DOMAIN-SUFFIX,alicdn.com,DIRECT
+  - DOMAIN-SUFFIX,alibaba.com,DIRECT
+  - DOMAIN-SUFFIX,aliyun.com,DIRECT
+  - DOMAIN-SUFFIX,alipay.com,DIRECT
+  - DOMAIN-KEYWORD,quark,DIRECT
+  - DOMAIN-KEYWORD,alicdn,DIRECT
+
+  # 7. 其他高频大陆兜底
   - DOMAIN-SUFFIX,baidu.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
-  - DOMAIN-SUFFIX,bilibili.tv,DIRECT
   - DOMAIN-SUFFIX,qq.com,DIRECT
   - DOMAIN-SUFFIX,tencent.com,DIRECT
   - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
@@ -390,7 +421,6 @@ rules:
   - DOMAIN-SUFFIX,tmall.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
   - DOMAIN-SUFFIX,pinduoduo.com,DIRECT
-  - DOMAIN-SUFFIX,alipay.com,DIRECT
   - DOMAIN-SUFFIX,weibo.com,DIRECT
   - DOMAIN-SUFFIX,163.com,DIRECT
   - DOMAIN-SUFFIX,126.com,DIRECT
@@ -403,11 +433,12 @@ rules:
   - DOMAIN-SUFFIX,xiaomi.com,DIRECT
   - DOMAIN-SUFFIX,meituan.com,DIRECT
   - DOMAIN-SUFFIX,ele.me,DIRECT
+  - DOMAIN-SUFFIX,bing.com,DIRECT
 
-  # UDP 443 阻断
+  # 8. UDP 443 阻断
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
 
-  # 特殊服务走代理
+  # 9. 特殊服务走代理
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
   - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
@@ -423,7 +454,7 @@ rules:
   - DOMAIN-SUFFIX,pornhub.com,📂 Private Media
   - DOMAIN-SUFFIX,xvideos.com,📂 Private Media
 
-  # 剩下走 Proxy 规则集 + Final
+  # 10. 剩下走 Proxy + Final
   - RULE-SET,Proxy,🐟 Final Select
   - MATCH,🐟 Final Select
 `;
@@ -434,7 +465,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=stone_shawn_clash_2026_universal.yaml"
+        "Content-Disposition": "attachment; filename=stone_shawn_clash_2026_quark_perfect.yaml"
       }
     });
   }
