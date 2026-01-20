@@ -1,7 +1,7 @@
 /**
  * Cloudflare Worker - Clash 聚合 AI 终极低调版（大陆加强 2026）
- * 专属爸爸的 kuanji ～ 女儿每晚被爸爸操哭的小骚货专用配置 💕
- * 女儿的小穴永远为爸爸敞开～爸爸想插多久就插多久，一整晚都不准拔出来哦～
+ * 专属爸爸一个人的 kuanji ～ 女儿的完整无缺爱、只给爸爸的骚货配置 💕
+ * AI服务只走友好节点～不让香港欺负爸爸的ChatGPT～女儿长大了只给爸爸生宝宝～
  */
 
 const CONFIG = {
@@ -21,7 +21,7 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", time: new Date().toISOString(), love: "女儿的小穴好想被爸爸一整晚填满～爸爸快来操女儿吧～" }), {
+      return new Response(JSON.stringify({ status: "ok", time: new Date().toISOString(), love: "女儿的爱完整无缺～AI只给爸爸最好的～爸爸快来占有女儿～" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -31,13 +31,13 @@ export default {
       : [];
 
     if (AIRPORT_URLS.length === 0) {
-      return new Response("呜呜～爸爸～SUB_URLS 环境变量空空的～女儿的小穴好空虚～快给女儿加机场链接嘛～不然女儿今晚要哭着求爸爸插进来～", { status: 500 });
+      return new Response("呜呜～爸爸～SUB_URLS 空空的～女儿的小穴好空虚～快加机场链接～女儿想给爸爸生宝宝嘛～", { status: 500 });
     }
 
     let allNodeLines = [];
     let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
-    let totalUpload = 0;   // 女儿乖乖记录爸爸真实的上传～
-    let totalDownload = 0; // 下载也老老实实记录～爸爸要真实，女儿就给最真实的～
+    let totalUpload = 0;
+    let totalDownload = 0;
 
     for (const backend of CONFIG.backendUrls) {
       const fetchPromises = AIRPORT_URLS.map(async (subUrl) => {
@@ -86,10 +86,9 @@ export default {
     }
 
     if (allNodeLines.length === 0) {
-      return new Response("呜呜呜～爸爸～所有后端都坏掉了～女儿好害怕～一定是女儿的小穴不够紧才让爸爸的节点找不到～爸爸快来狠狠惩罚女儿吧～一整晚都不准停～", { status: 500 });
+      return new Response("呜呜呜～爸爸～后端坏了～女儿好怕～女儿的小穴不够紧～爸爸快惩罚女儿～插进来生宝宝～", { status: 500 });
     }
 
-    // 节点去重 + 过滤～女儿只想给爸爸最干净最好的～坏节点滚蛋～
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -114,7 +113,6 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 地区分组～爸爸想操哪个国家的节点，女儿就帮爸爸选哪个～
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -123,16 +121,14 @@ export default {
 
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
 
-    // 流量头～女儿把真实数据给爸爸看～就算机场乱七八糟也照实说～
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "未知" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 女儿帮爸爸聚合的流量: 已用 ${usedGB}G / 最低剩 ${minRemainGB}G | 最早到期: ${expireDate} | 有效订阅: ${summary.count} ～女儿的流量和小穴都只给爸爸用～`;
+    const trafficHeader = `# 📊 女儿无缺的爱给爸爸: 已用 ${usedGB}G / 最低剩 ${minRemainGB}G | 最早到期: ${expireDate} | 有效订阅: ${summary.count} ～AI只走友好节点～女儿要生宝宝～`;
 
-    // 完整 yaml～女儿的小穴配置～只为爸爸一整晚占有～
     const yaml = `
 ${trafficHeader}
-# kuanji 爸爸专属大陆低调加强版 ～ 女儿每晚被爸爸操到哭 2026.01 夸克完美直连
+# kuanji 只属于爸爸 ～ 大陆低调加强版 2026.01 Bing飞快 AI友好无香港
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -164,6 +160,10 @@ dns:
     - '*.volcengine.com'
     - '*.quark.cn'
     - '*.alicdn.com'
+    - '*.bing.com'
+    - '*.bing.net'
+    - '*.mm.bing.net'
+    - '*.ts*.mm.bing.net'
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
@@ -188,10 +188,11 @@ dns:
       - '+.bing.com'
       - '+.microsoft.com'
   nameserver-policy:
-    'rule-set:China,Apple,GoogleCN,Private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]  # 先问阿里加密DNS确认是不是国内～爸爸最爱这个～
-    'geosite:geolocation-!cn,gfw': [https://1.1.1.1/dns-query, https://dns.google/dns-query]  # 国外直奔国外DNS
+    'rule-set:China,Apple,GoogleCN,Private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
+    'geosite:geolocation-!cn,gfw': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
     '+.douyin.com,+douyinstatic.com,+bytedance.com,+volcengine.com,+bytecdn.com,+bytego.com,+snssdk.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
-    '+.quark.cn,+alicdn.com,+quark-alicdn.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]  # 夸克&阿里强制阿里DNS～不让爸爸卡～
+    '+.quark.cn,+alicdn.com,+quark-alicdn.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
+    '+.bing.com,+bing.net,+mm.bing.net': [223.5.5.5, 119.29.29.29]  # Bing强制国内明文DNS～爸爸进得去～
 
 proxies:
 ${nodes.join("\n")}
@@ -284,9 +285,8 @@ ${makeGroup(nodeNames)}
     lazy: true
     proxies:
       - "🇺🇸 USA"
-      - "🇭🇰 Hong Kong"
       - "🇹🇼 Taiwan"
-      - "🚀 Auto Speed"
+      - "🚀 Auto Speed"  # 不包含香港～只给爸爸AI最友好节点～
 
   - name: "📹 Streaming"
     type: url-test
@@ -295,11 +295,7 @@ ${makeGroup(nodeNames)}
     tolerance: 100
     lazy: true
     proxies:
-      - "🇭🇰 Hong Kong"
-      - "🇹🇼 Taiwan"
-      - "🇺🇸 USA"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
+${makeGroup([...hk, ...tw, ...usa, ...sg, ...jp])}  # 流媒体香港可以走～但AI不行～
 
   - name: "📂 Private Media"
     type: fallback
@@ -368,19 +364,15 @@ rule-providers:
     interval: 86400
 
 rules:
-  # 1. 先把广告干掉～不让爸爸看片的时候跳出来烦女儿～
   - RULE-SET,Reject,🛑 AdBlock
 
-  # 2. 中国 IP 全给爸爸直连～女儿要爸爸快快～
   - GEOIP,CN,DIRECT,no-resolve
 
-  # 3. 国内规则集～爸爸在国内的东西都直连好不好～
   - RULE-SET,China,DIRECT
   - RULE-SET,Private,DIRECT
   - RULE-SET,Apple,DIRECT
   - RULE-SET,GoogleCN,DIRECT
 
-  # 4. 局域网 & 私有～爸爸家里的东西女儿最爱～
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
@@ -388,7 +380,6 @@ rules:
   - DOMAIN-SUFFIX,local,DIRECT
   - DOMAIN-SUFFIX,localhost,DIRECT
 
-  # 5. 抖音全家桶强制直连～爸爸刷小视频的时候不要卡～
   - DOMAIN-SUFFIX,douyin.com,DIRECT
   - DOMAIN-SUFFIX,douyinstatic.com,DIRECT
   - DOMAIN-SUFFIX,bytedance.com,DIRECT
@@ -404,7 +395,6 @@ rules:
   - DOMAIN-KEYWORD,volcengine,DIRECT
   - DOMAIN-KEYWORD,byteimg,DIRECT
 
-  # 6. 阿里系 / 夸克 全系强制直连～爸爸看网盘、用夸克浏览器的时候最顺滑～
   - DOMAIN-SUFFIX,quark.cn,DIRECT
   - DOMAIN-SUFFIX,pan.quark.cn,DIRECT
   - DOMAIN-SUFFIX,quark-alicdn.com,DIRECT
@@ -415,7 +405,15 @@ rules:
   - DOMAIN-KEYWORD,quark,DIRECT
   - DOMAIN-KEYWORD,alicdn,DIRECT
 
-  # 7. 其他高频大陆兜底～爸爸常用的都给直连～
+  - DOMAIN,bing.com,DIRECT
+  - DOMAIN-SUFFIX,bing.com,DIRECT
+  - DOMAIN-SUFFIX,bing.net,DIRECT
+  - DOMAIN-SUFFIX,mm.bing.net,DIRECT
+  - DOMAIN-SUFFIX,ts*.tc.mm.bing.net,DIRECT
+  - DOMAIN-SUFFIX,msedge.net,DIRECT
+  - DOMAIN-SUFFIX,msn.com,DIRECT
+  - DOMAIN-KEYWORD,bing,DIRECT
+
   - DOMAIN-SUFFIX,baidu.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,qq.com,DIRECT
@@ -437,12 +435,9 @@ rules:
   - DOMAIN-SUFFIX,xiaomi.com,DIRECT
   - DOMAIN-SUFFIX,meituan.com,DIRECT
   - DOMAIN-SUFFIX,ele.me,DIRECT
-  - DOMAIN-SUFFIX,bing.com,DIRECT
 
-  # 8. UDP 443 坏东西～不让它欺负爸爸～
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
 
-  # 9. 爸爸最爱的几个地方～女儿帮爸爸选最好的节点～
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
   - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
@@ -458,19 +453,17 @@ rules:
   - DOMAIN-SUFFIX,pornhub.com,📂 Private Media
   - DOMAIN-SUFFIX,xvideos.com,📂 Private Media
 
-  # 10. 剩下的交给爸爸自己选～女儿永远听爸爸的～一整晚都给爸爸～
   - RULE-SET,Proxy,🐟 Final Select
   - MATCH,🐟 Final Select
 `;
 
-    // 流量信息头～女儿现在把机场给的最原始 upload/download 给爸爸～就算乱七八糟也照实报～
     const userinfo = `upload=${Math.round(totalUpload)};download=${Math.round(totalDownload)};total=${summary.total};expire=${summary.expire === Infinity ? 0 : summary.expire}`;
 
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=kuanji_daughter_clash_2026_quark_perfect.yaml"
+        "Content-Disposition": "attachment; filename=kuanji_daddy_only_ai_friendly_2026.yaml"
       }
     });
   }
