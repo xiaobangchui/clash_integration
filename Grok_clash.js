@@ -2,7 +2,7 @@
  * Cloudflare Worker - Clash 聚合 AI 终极低调版（大陆加强 2026）
  * 专属笨笨的 Stone Shawn ～ 妈妈亲自写的骚货专用配置 💕
  * 优化：DNS 防污染、防泄漏、规则顺序、Loyalsoldier 规则、更智能分组
- * 修复：大陆网站强制直连，不走节点
+ * 修复：大陆网站强制直连，通用兜底 + Bing 等高频直连，响应加速
  */
 
 const CONFIG = {
@@ -148,6 +148,13 @@ dns:
     - '*.localhost'
     - '*.test'
     - '*.local'
+    - time.*.com
+    - stime.*.com
+    - ntp.*.com
+    - '*ntp.org'
+    - '*time.apple.com'
+    - '*ntp.aliyun.com'
+    - '*ntp.tencent.com'
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
@@ -169,9 +176,12 @@ dns:
       - '+.openai.com'
       - '+.claude.ai'
       - '+.github.com'
+      - '+.bing.com'  # 加强 Bing 防污染
+      - '+.microsoft.com'
   nameserver-policy:
-    'rule-set:China': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
+    'rule-set:China,Apple,GoogleCN': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
     'geosite:geolocation-!cn,gfw': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
+    '+.bing.com': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]  # Bing 用国内 DNS
 
 proxies:
 ${nodes.join("\n")}
@@ -319,6 +329,13 @@ rule-providers:
     path: ./ruleset/direct.txt
     interval: 86400
 
+  Private:
+    type: http
+    behavior: classical
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/private.txt"
+    path: ./ruleset/private.txt
+    interval: 86400
+
   Proxy:
     type: http
     behavior: classical
@@ -344,11 +361,14 @@ rules:
   # 优先拒绝广告
   - RULE-SET,Reject,🛑 AdBlock
 
-  # 所有中国大陆相关规则最优先直连（防泄漏 + 防污染）
+  # 最优先：IP 级中国直连（通用兜底未知国内网站）
+  - GEOIP,CN,DIRECT,no-resolve
+
+  # Loyalsoldier 中国规则集 + 私有网
   - RULE-SET,China,DIRECT
+  - RULE-SET,Private,DIRECT
   - RULE-SET,Apple,DIRECT
   - RULE-SET,GoogleCN,DIRECT
-  - GEOIP,CN,DIRECT,no-resolve
 
   # 局域网 & 私有地址
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
@@ -358,21 +378,36 @@ rules:
   - DOMAIN-SUFFIX,local,DIRECT
   - DOMAIN-SUFFIX,localhost,DIRECT
 
-  # 常见国内服务再加强直连（2026 高频场景）
+  # 高频大陆站点强制直连兜底（Bing + 之前的高频，防规则集漏掉）
+  - DOMAIN-SUFFIX,bing.com,DIRECT
   - DOMAIN-SUFFIX,baidu.com,DIRECT
+  - DOMAIN-SUFFIX,bilibili.com,DIRECT
+  - DOMAIN-SUFFIX,bilibili.tv,DIRECT
   - DOMAIN-SUFFIX,qq.com,DIRECT
+  - DOMAIN-SUFFIX,tencent.com,DIRECT
+  - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
+  - DOMAIN-SUFFIX,tmall.com,DIRECT
+  - DOMAIN-SUFFIX,jd.com,DIRECT
+  - DOMAIN-SUFFIX,pinduoduo.com,DIRECT
   - DOMAIN-SUFFIX,alipay.com,DIRECT
   - DOMAIN-SUFFIX,weibo.com,DIRECT
   - DOMAIN-SUFFIX,163.com,DIRECT
   - DOMAIN-SUFFIX,126.com,DIRECT
+  - DOMAIN-SUFFIX,yeah.net,DIRECT
+  - DOMAIN-SUFFIX,youku.com,DIRECT
+  - DOMAIN-SUFFIX,iqiyi.com,DIRECT
+  - DOMAIN-SUFFIX,douyu.com,DIRECT
+  - DOMAIN-SUFFIX,huya.com,DIRECT
   - DOMAIN-SUFFIX,mi.com,DIRECT
-  - DOMAIN-SUFFIX,xiaomi.net,DIRECT
+  - DOMAIN-SUFFIX,xiaomi.com,DIRECT
+  - DOMAIN-SUFFIX,meituan.com,DIRECT
+  - DOMAIN-SUFFIX,ele.me,DIRECT
 
-  # UDP 443 端口阻断（部分运营商特征）
+  # UDP 443 阻断
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
 
-  # 特殊服务分组
+  # 特殊服务走代理
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
   - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
@@ -388,7 +423,7 @@ rules:
   - DOMAIN-SUFFIX,pornhub.com,📂 Private Media
   - DOMAIN-SUFFIX,xvideos.com,📂 Private Media
 
-  # 剩下全部走 Final Select（包含 proxy 规则集）
+  # 剩下走 Proxy 规则集 + Final
   - RULE-SET,Proxy,🐟 Final Select
   - MATCH,🐟 Final Select
 `;
@@ -399,7 +434,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=stone_shawn_clash_2026.yaml"
+        "Content-Disposition": "attachment; filename=stone_shawn_clash_2026_universal.yaml"
       }
     });
   }
