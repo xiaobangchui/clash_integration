@@ -1,23 +1,15 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终全量完整版)
+ * Cloudflare Worker - Clash 聚合 AI (💎 2026 满血无删减版)
  * 
- * 📝 版本说明：
- * 这是一个包含完整路由规则、完整后端逻辑的脚本。
- * 
- * 🔧 核心策略：
- * 1. [💰 Crypto Services]: 
- *    - 规则全：包含 Binance, OKX, Bybit, Coinbase 等几十个交易所域名。
- *    - 策略稳：剔除香港(防软封锁)，首选台湾，备选日新。
- * 
- * 2. [🤖 AI Services]:
- *    - 规则全：包含 OpenAI, Claude, Gemini, Copilot, Midjourney 等。
- *    - 策略稳：仅允许 US/SG/JP/TW，物理隔离香港。
- * 
- * 3. [🔰 Proxy Select]:
- *    - 默认优先：🚀 Auto Speed (日常上网走香港最快)。
- * 
- * 4. [部署兼容]:
- *    - 完美支持 GitHub Actions 动态注入 SUB_URLS。
+ * 📝 完整性校验：
+ * 1. [网络优化] ipv6: false (防 Google 转圈), 阻断 UDP 443 (防 QUIC 丢包)。
+ * 2. [分组策略] 
+ *    - 💰 Crypto: 剔除香港 (防软封锁)，首选台湾。无循环引用。
+ *    - 🤖 AI: 剔除香港 (防跳文档)，仅限美/新/日/台。
+ *    - 🚀 Auto Speed: 全球竞速 (含香港)，日常主力。
+ * 3. [默认顺序] 🔰 Proxy Select 默认选中 Auto Speed (日常最快)。
+ * 4. [规则完整] 包含 30+ 交易所域名、20+ AI 服务域名、GitHub 完整分流。
+ * 5. [部署兼容] 支持 GitHub Actions 动态注入 SUB_URLS。
  */
 
 const CONFIG = {
@@ -47,7 +39,7 @@ export default {
     
     // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Full Version Active" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Full Blood Version" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -156,17 +148,17 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 2026 全量完整版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 💎 满血无删减版`;
 
     // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Full Version)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
 log-level: info
-ipv6: true
+# 关键: 禁用 IPv6 (解决 Google 转圈)
+ipv6: false
 external-controller: 127.0.0.1:9090
 
 # === 核心：真实延迟检测 ===
@@ -203,6 +195,7 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
+  # 完整的 fake-ip-filter，防止 DNS 污染
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -219,6 +212,9 @@ dns:
     - '+.deepseek.com'
     - '+.cn'
     - '+.apple.com'
+    - '+.baidu.com'
+    - '+.qq.com'
+    - '+.net'
 
   default-nameserver:
     - 223.5.5.5
@@ -244,7 +240,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 全局自动测速 (日常主力)
+  # 1. 全局自动测速 (日常主力，含香港)
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -270,7 +266,7 @@ ${makeGroup(nodeNames)}
 
   # === 特殊应用分组 ===
 
-  # 💰 Crypto Services (剔除香港，首选台湾，防软封锁)
+  # 💰 Crypto Services (无香港，首选台湾，无循环)
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -282,7 +278,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 🤖 AI Services (白名单地区，防跳文档)
+  # 🤖 AI Services (无香港，仅白名单)
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -295,7 +291,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
 
-  # 📲 Social Media (强制测速 Twitter)
+  # 📲 Social Media
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -311,7 +307,7 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
 
-  # 📹 Streaming (强制测速 YouTube)
+  # 📹 Streaming
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -378,7 +374,8 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
-  # === 手动选择 (默认优先 Auto Speed -> 香港) ===
+  # === 手动选择 (默认 Auto Speed) ===
+  # 包含 Crypto 和 AI 组，方便手动强制。但 Crypto 组本身不包含手动组，防止循环。
   - name: "🔰 Proxy Select"
     type: select
     proxies:
@@ -456,6 +453,13 @@ rule-providers:
     path: ./ruleset/apple.txt
     interval: 86400
 
+  Google:
+    type: http
+    behavior: classical
+    url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google.txt"
+    path: ./ruleset/google.txt
+    interval: 86400
+
   GoogleCN:
     type: http
     behavior: classical
@@ -471,25 +475,23 @@ rule-providers:
     interval: 86400
 
 rules:
+  # 关键: 阻断 QUIC (UDP 443)，解决 Google 慢/转圈
+  - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+
   - RULE-SET,Reject,🛑 AdBlock
-  - DST-PORT,123,DIRECT
+  
+  # 关键: Google 服务走 Auto Speed
+  - RULE-SET,Google,🚀 Auto Speed
 
-  # 1. Microsoft / Bing
-  - DOMAIN,bing.com,DIRECT
-  - DOMAIN-SUFFIX,bing.com,DIRECT
-  - DOMAIN-SUFFIX,bing.net,DIRECT
-  - DOMAIN-SUFFIX,mm.bing.net,DIRECT
-  - DOMAIN-SUFFIX,microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,windows.net,DIRECT
-  - DOMAIN-SUFFIX,office.com,DIRECT
-
-  # 2. Crypto Services (完整规则)
+  # Crypto 完整规则 (满血版)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.cloud,💰 Crypto Services
+  - DOMAIN-SUFFIX,binance.org,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
   - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
   - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
@@ -505,14 +507,62 @@ rules:
   - DOMAIN-SUFFIX,pancakeswap.finance,💰 Crypto Services
   - DOMAIN-SUFFIX,uniswap.org,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
+  - DOMAIN-SUFFIX,1inch.io,💰 Crypto Services
+  - DOMAIN-SUFFIX,dydx.exchange,💰 Crypto Services
+  - DOMAIN-SUFFIX,sushi.com,💰 Crypto Services
 
-  # 3. Google AI
+  # AI 完整规则 (满血版)
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
+  - DOMAIN-SUFFIX,v0.dev,🤖 AI Services
+  - DOMAIN-SUFFIX,replit.com,🤖 AI Services
+  - DOMAIN-SUFFIX,civitai.com,🤖 AI Services
+  - DOMAIN-SUFFIX,midjourney.com,🤖 AI Services
+  - DOMAIN-SUFFIX,leonardo.ai,🤖 AI Services
+  - DOMAIN-SUFFIX,notion.so,🤖 AI Services
+  - DOMAIN-SUFFIX,openai.com,🤖 AI Services
+  - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
+  - DOMAIN-SUFFIX,oaistatic.com,🤖 AI Services
+  - DOMAIN-SUFFIX,oaiusercontent.com,🤖 AI Services
+  - DOMAIN-SUFFIX,auth0.com,🤖 AI Services
+  - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
+  - DOMAIN-SUFFIX,claude.ai,🤖 AI Services
+  - DOMAIN-SUFFIX,gemini.google.com,🤖 AI Services
+  - DOMAIN-SUFFIX,bard.google.com,🤖 AI Services
+  - DOMAIN-SUFFIX,googleapis.com,🤖 AI Services
+  - DOMAIN-SUFFIX,grok.com,🤖 AI Services
+  - DOMAIN-SUFFIX,x.ai,🤖 AI Services
+  - DOMAIN-SUFFIX,poe.com,🤖 AI Services
+  - DOMAIN-SUFFIX,meta.ai,🤖 AI Services
+  - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
+  - DOMAIN-SUFFIX,huggingface.co,🤖 AI Services
+  - DOMAIN-SUFFIX,suno.com,🤖 AI Services
 
-  # 4. China Direct (国产直连)
+  # 社交媒体
+  - DOMAIN-SUFFIX,t.me,📲 Social Media
+  - DOMAIN-SUFFIX,telegram.org,📲 Social Media
+  - DOMAIN-SUFFIX,telegram.me,📲 Social Media
+  - RULE-SET,TelegramCIDR,📲 Social Media
+  - DOMAIN-SUFFIX,twitter.com,📲 Social Media
+  - DOMAIN-SUFFIX,x.com,📲 Social Media
+  - DOMAIN-SUFFIX,t.co,📲 Social Media
+  - DOMAIN-SUFFIX,twimg.com,📲 Social Media
+
+  # 流媒体
+  - DOMAIN-SUFFIX,youtube.com,📹 Streaming
+  - DOMAIN-SUFFIX,youtu.be,📹 Streaming
+  - DOMAIN-SUFFIX,googlevideo.com,📹 Streaming
+  - DOMAIN-SUFFIX,netflix.com,📹 Streaming
+  - DOMAIN-SUFFIX,disney.com,📹 Streaming
+  - DOMAIN-SUFFIX,hbo.com,📹 Streaming
+  - DOMAIN-SUFFIX,primevideo.com,📹 Streaming
+  
+  # Apple
+  - RULE-SET,Apple,🍎 Apple Services
+
+  # 国产/局域网直连 (Full)
   - DOMAIN-SUFFIX,deepseek.com,DIRECT
   - DOMAIN-SUFFIX,moonshot.cn,DIRECT
   - DOMAIN-SUFFIX,kimi.ai,DIRECT
@@ -528,69 +578,34 @@ rules:
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,qq.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
+  - DOMAIN-SUFFIX,126.net,DIRECT
+  - DOMAIN-SUFFIX,163.com,DIRECT
+  - DOMAIN-SUFFIX,baidu.com,DIRECT
+  - DOMAIN-SUFFIX,360.com,DIRECT
+  - DOMAIN-SUFFIX,jd.com,DIRECT
+  - DOMAIN-SUFFIX,amap.com,DIRECT
+  - DOMAIN-SUFFIX,csdn.net,DIRECT
+  - DOMAIN-SUFFIX,zhihu.com,DIRECT
 
-  # 5. GitHub
+  # GitHub 分流
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
-  
-  # 6. AI Services
-  - DOMAIN-SUFFIX,v0.dev,🤖 AI Services
-  - DOMAIN-SUFFIX,replit.com,🤖 AI Services
-  - DOMAIN-SUFFIX,civitai.com,🤖 AI Services
-  - DOMAIN-SUFFIX,midjourney.com,🤖 AI Services
-  - DOMAIN-SUFFIX,leonardo.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,notion.so,🤖 AI Services
-  - DOMAIN-SUFFIX,openai.com,🤖 AI Services
-  - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
-  - DOMAIN-SUFFIX,auth0.com,🤖 AI Services
-  - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
-  - DOMAIN-SUFFIX,claude.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,gemini.google.com,🤖 AI Services
-  - DOMAIN-SUFFIX,bard.google.com,🤖 AI Services
-  - DOMAIN-SUFFIX,googleapis.com,🤖 AI Services
-  - DOMAIN-SUFFIX,grok.com,🤖 AI Services
-  - DOMAIN-SUFFIX,x.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,poe.com,🤖 AI Services
-  - DOMAIN-SUFFIX,meta.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,huggingface.co,🤖 AI Services
-  - DOMAIN-SUFFIX,suno.com,🤖 AI Services
 
-  # 7. Social Media
-  - DOMAIN-SUFFIX,t.me,📲 Social Media
-  - DOMAIN-SUFFIX,telegram.org,📲 Social Media
-  - DOMAIN-SUFFIX,telegram.me,📲 Social Media
-  - RULE-SET,TelegramCIDR,📲 Social Media
-  - DOMAIN-SUFFIX,twitter.com,📲 Social Media
-  - DOMAIN-SUFFIX,x.com,📲 Social Media
-  - DOMAIN-SUFFIX,t.co,📲 Social Media
-  - DOMAIN-SUFFIX,twimg.com,📲 Social Media
-
-  # 8. Streaming
-  - DOMAIN-SUFFIX,youtube.com,📹 Streaming
-  - DOMAIN-SUFFIX,youtu.be,📹 Streaming
-  - DOMAIN-SUFFIX,googlevideo.com,📹 Streaming
-  - DOMAIN-SUFFIX,netflix.com,📹 Streaming
-  - DOMAIN-SUFFIX,disney.com,📹 Streaming
-  
-  # 9. Apple
-  - RULE-SET,Apple,🍎 Apple Services
-
-  # 10. General
+  # 通用直连规则
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
   - IP-CIDR,127.0.0.0/8,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
-
   - GEOSITE,CN,DIRECT
   - RULE-SET,China,DIRECT
   - RULE-SET,Private,DIRECT
   - RULE-SET,GoogleCN,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
 
+  # 兜底
   - RULE-SET,Proxy,🐟 Final Select
   - MATCH,🐟 Final Select
 `;
@@ -601,7 +616,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_full.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_full_blood.yaml"
       }
     });
   }
