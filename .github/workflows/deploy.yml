@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # [关键步骤] 注入变量：把换行符替换为逗号，防止链接粘连
+      # [关键步骤] 注入变量：把换行符替换为逗号，防止链接粘连 分支测试
       - name: Inject Secrets into Config
         env:
           The_Url: ${{ secrets.SUB_URLS }}
