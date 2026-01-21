@@ -1,33 +1,13 @@
-name: Deploy to Cloudflare Workers
-
-on:
-  push:
-    branches:
-      - main
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    name: Deploy
-    steps:
-      - uses: actions/checkout@v4
-      
-      # [关键修改] 自动清洗 Secret，去除回车和换行
+# [关键修正] 将换行符替换为逗号，防止链接粘连
       - name: Inject Secrets into Config
         env:
-          # 先把 Secret 读入环境变量，比直接拼接更安全
           The_Url: ${{ secrets.SUB_URLS }}
         run: |
-          # 使用 tr 命令删除所有换行符 (\n) 和回车符 (\r)
-          CLEAN_URL=$(echo "$The_Url" | tr -d '\n' | tr -d '\r')
+          # 1. 把换行符(\n)替换成逗号(,)
+          # 2. 删除回车符(\r)防止格式错误
+          CLEAN_URL=$(echo "$The_Url" | tr '\n' ',' | tr -d '\r')
           
           echo "" >> wrangler.toml
           echo "[vars]" >> wrangler.toml
-          # 写入清洗后的链接
+          # 3. 写入配置
           echo "SUB_URLS = \"$CLEAN_URL\"" >> wrangler.toml
-
-      - name: Deploy to Cloudflare Workers
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
