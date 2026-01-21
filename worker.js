@@ -1,21 +1,23 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终完美版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终全量完整版)
  * 
- * 🌟 策略逻辑全解：
+ * 📝 版本说明：
+ * 这是一个包含完整路由规则、完整后端逻辑的脚本。
  * 
- * 1. [精准分流]: 
- *    - 炒币 (Binance/OKX) -> 强制走 💰 Crypto Services (无香港，防软封锁)。
- *    - AI (ChatGPT/Google) -> 强制走 🤖 AI Services (白名单地区，防跳文档)。
- *    - 推特/油管 -> 强制走 📲 Social / 📹 Streaming (包含香港，测速保连通)。
+ * 🔧 核心策略：
+ * 1. [💰 Crypto Services]: 
+ *    - 规则全：包含 Binance, OKX, Bybit, Coinbase 等几十个交易所域名。
+ *    - 策略稳：剔除香港(防软封锁)，首选台湾，备选日新。
  * 
- * 2. [日常浏览]:
- *    - 漏网之鱼 (Final) -> 走 🔰 Proxy Select。
- *    - 🔰 Proxy Select 默认选中 -> 🚀 Auto Speed。
- *    - 🚀 Auto Speed -> 自动选最快节点 (通常是香港)。
- *    - 结果：日常上网速度最快 (香港)，敏感操作自动切安全区 (台湾/新加坡)。
+ * 2. [🤖 AI Services]:
+ *    - 规则全：包含 OpenAI, Claude, Gemini, Copilot, Midjourney 等。
+ *    - 策略稳：仅允许 US/SG/JP/TW，物理隔离香港。
  * 
- * 3. [防环路]: 
- *    - 移除了 Crypto 组对 Proxy Select 的引用，彻底解决 loop detected 报错。
+ * 3. [🔰 Proxy Select]:
+ *    - 默认优先：🚀 Auto Speed (日常上网走香港最快)。
+ * 
+ * 4. [部署兼容]:
+ *    - 完美支持 GitHub Actions 动态注入 SUB_URLS。
  */
 
 const CONFIG = {
@@ -29,7 +31,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪 (过滤无效节点)
+  // 强力去噪 (过滤无效/到期/限速节点)
   excludeKeywords: [
     "5x", "10x", "x5", "x10", 
     "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
@@ -45,18 +47,18 @@ export default {
     
     // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Final Perfect Config" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Full Version Active" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 1. 获取订阅
+    // 1. 获取订阅 (兼容 GitHub Actions 注入 和 环境变量)
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
 
     if (AIRPORT_URLS.length === 0) {
-      return new Response("配置错误：请在 Cloudflare 环境变量中设置 SUB_URLS。", { status: 500 });
+      return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
     }
 
     let allNodeLines = [];
@@ -154,12 +156,12 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 2026 最终完美版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 2026 全量完整版`;
 
     // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Final Edition)
+# Custom Clash Config (Full Version)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -242,7 +244,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 全局自动测速 (包含香港，速度最快)
+  # 1. 全局自动测速 (日常主力)
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -252,7 +254,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移 (包含香港，稳健)
+  # 2. 故障转移
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
@@ -268,8 +270,7 @@ ${makeGroup(nodeNames)}
 
   # === 特殊应用分组 ===
 
-  # 💰 Crypto Services (无香港，无循环)
-  # 策略：不含香港(防封)，不含手动组(防循环)。
+  # 💰 Crypto Services (剔除香港，首选台湾，防软封锁)
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -281,7 +282,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 🤖 AI Services (白名单)
+  # 🤖 AI Services (白名单地区，防跳文档)
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -294,7 +295,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
 
-  # 📲 Social Media (含香港)
+  # 📲 Social Media (强制测速 Twitter)
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -310,7 +311,7 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
 
-  # 📹 Streaming (含香港)
+  # 📹 Streaming (强制测速 YouTube)
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -377,8 +378,7 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
-  # === 手动选择 (优化默认顺序) ===
-  # 默认选 🚀 Auto Speed，确保漏网之鱼流量走最快的香港节点。
+  # === 手动选择 (默认优先 Auto Speed -> 香港) ===
   - name: "🔰 Proxy Select"
     type: select
     proxies:
@@ -400,7 +400,6 @@ ${makeGroup(others)}
       - REJECT
       - DIRECT
 
-  # Apple
   - name: "🍎 Apple Services"
     type: select
     proxies:
@@ -408,7 +407,6 @@ ${makeGroup(others)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  # 兜底
   - name: "🐟 Final Select"
     type: select
     proxies:
@@ -476,7 +474,7 @@ rules:
   - RULE-SET,Reject,🛑 AdBlock
   - DST-PORT,123,DIRECT
 
-  # 1. Bing / Microsoft
+  # 1. Microsoft / Bing
   - DOMAIN,bing.com,DIRECT
   - DOMAIN-SUFFIX,bing.com,DIRECT
   - DOMAIN-SUFFIX,bing.net,DIRECT
@@ -485,9 +483,10 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. Crypto Services (虚拟货币分流)
+  # 2. Crypto Services (完整规则)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
+  - DOMAIN-SUFFIX,binance.cloud,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
@@ -502,6 +501,10 @@ rules:
   - DOMAIN-SUFFIX,coinmarketcap.com,💰 Crypto Services
   - DOMAIN-SUFFIX,coingecko.com,💰 Crypto Services
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,sosovalue.xyz,💰 Crypto Services
+  - DOMAIN-SUFFIX,pancakeswap.finance,💰 Crypto Services
+  - DOMAIN-SUFFIX,uniswap.org,💰 Crypto Services
+  - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
   # 3. Google AI
   - DOMAIN,aistudio.google.com,🤖 AI Services
@@ -509,7 +512,7 @@ rules:
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
 
-  # 4. 国产直连
+  # 4. China Direct (国产直连)
   - DOMAIN-SUFFIX,deepseek.com,DIRECT
   - DOMAIN-SUFFIX,moonshot.cn,DIRECT
   - DOMAIN-SUFFIX,kimi.ai,DIRECT
@@ -598,7 +601,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_perfect.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_full.yaml"
       }
     });
   }
