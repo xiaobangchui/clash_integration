@@ -3,7 +3,7 @@ name: Deploy to Cloudflare Workers
 on:
   push:
     branches:
-      - main # 如果你的主分支叫 master，请这里改为 master
+      - main
 
 jobs:
   deploy:
@@ -16,10 +16,10 @@ jobs:
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }}
-          # 关键修改：告诉 Wrangler 我们要传递 SUB_URLS 这个机密变量
+          accountId: ${{ secrets.CF_ACCOUNT_ID }} # 👈 这一行必须有！
+          # 告诉 Wrangler 要上传哪个 Secret
           secrets: |
             SUB_URLS
         env:
-          # 关键修改：将 GitHub 的 Secret 映射给 Wrangler
+          # 将 GitHub 的 Secret 传递给环境变量
           SUB_URLS: ${{ secrets.SUB_URLS }}
