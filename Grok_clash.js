@@ -1,11 +1,15 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI 终极修正版 (2026 Hotfix)
+ * Cloudflare Worker - Clash 聚合 AI 终极版 (2026 灵敏响应版)
  * 
- * 🚨 紧急修复日志：
- * 1. [修复] 补回遗漏的 "📹 Streaming" 分组定义，解决启动报错。
- * 2. [保持] Google AI Studio 修复 (强制 AI 组)。
- * 3. [保持] GitHub 智能分流 (Copilot 走 AI，下载走通用)。
- * 4. [保持] Fallback 故障转移机制。
+ * 🔙 回退说明：
+ * 1. [灵敏] Auto Speed 测速间隔恢复为 300s (5分钟)，容差恢复为 50ms。
+ *    - 适合网络波动环境，节点挂了能更快切换，不会傻等。
+ * 
+ * ✅ 保留的所有修复：
+ * 1. [修复] 补全 "📹 Streaming" 分组，彻底解决报错。
+ * 2. [修复] Google AI Studio 强制走 AI 组。
+ * 3. [优化] GitHub 智能分流 (Copilot 防封，下载加速)。
+ * 4. [稳定] 保留 Fallback 故障转移组 (AI 挂机专用)。
  */
 
 const CONFIG = {
@@ -35,7 +39,7 @@ export default {
     
     // 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Streaming Group Restored" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Stable & Responsive" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -144,12 +148,12 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 修复版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 灵敏响应版`;
 
     // 5. 生成配置
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Hotfix)
+# Custom Clash Config (Stable Edition)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -228,7 +232,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 自动测速
+  # 1. 自动测速 (标准间隔，灵敏响应)
   - name: "🚀 Auto Speed"
     type: url-test
     url: http://www.gstatic.com/generate_204
@@ -238,7 +242,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移 (AI 专用)
+  # 2. 故障转移 (AI 专用，稳如老狗)
   - name: "📉 Auto Fallback"
     type: fallback
     url: http://www.gstatic.com/generate_204
@@ -342,7 +346,7 @@ ${makeGroup(others)}
       - "🇺🇸 USA"
       - "🔰 Proxy Select"
 
-  # Streaming (已补回)
+  # Streaming (确保存在)
   - name: "📹 Streaming"
     type: select
     proxies:
@@ -528,7 +532,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_hotfix.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_stable.yaml"
       }
     });
   }
