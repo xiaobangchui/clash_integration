@@ -1,15 +1,17 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI 终极版 (2026 灵敏响应版)
+ * Cloudflare Worker - Clash 聚合 AI (🧠 AI 纯净逻辑版)
  * 
- * 🔙 回退说明：
- * 1. [灵敏] Auto Speed 测速间隔恢复为 300s (5分钟)，容差恢复为 50ms。
- *    - 适合网络波动环境，节点挂了能更快切换，不会傻等。
+ * 🛠️ 针对 "AI 跳转文档/软封锁" 问题的物理修复：
  * 
- * ✅ 保留的所有修复：
- * 1. [修复] 补全 "📹 Streaming" 分组，彻底解决报错。
- * 2. [修复] Google AI Studio 强制走 AI 组。
- * 3. [优化] GitHub 智能分流 (Copilot 防封，下载加速)。
- * 4. [稳定] 保留 Fallback 故障转移组 (AI 挂机专用)。
+ * 1. [关键] AI 分组实行 "地域白名单" 策略。
+ *    - 移除 "📉 Auto Fallback" 和 "🔰 Proxy Select" (因为它们可能包含香港节点)。
+ *    - 仅保留 US/SG/JP/TW。Clash 只能在这些白名单地区中选，彻底杜绝跳文档问题。
+ * 
+ * 2. [关键] AI 测速 URL 更换为核心 API。
+ *    - URL: https://alkalimakersuite-pa.clients6.google.com/
+ *    - 效果：相比前端页面，API 接口在被封锁时更容易返回错误状态，让 Clash 识别并切换。
+ * 
+ * 3. [其他] 保持 Streaming/Social 的专组专测逻辑。
  */
 
 const CONFIG = {
@@ -39,7 +41,7 @@ export default {
     
     // 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Stable & Responsive" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "AI Clean Mode Active" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -148,18 +150,22 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 灵敏响应版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🧠 AI 纯净逻辑版`;
 
     // 5. 生成配置
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Stable Edition)
+# Custom Clash Config (AI Pure Edition)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
 log-level: info
 ipv6: true
 external-controller: 127.0.0.1:9090
+
+# === 核心：真实延迟检测 ===
+unified-delay: true
+tcp-concurrent: true
 
 # === Tun 模式 ===
 tun:
@@ -232,34 +238,85 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 自动测速 (标准间隔，灵敏响应)
+  # 1. 全局自动测速 (基准: Cloudflare)
   - name: "🚀 Auto Speed"
     type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
-    tolerance: 50
+    url: https://cp.cloudflare.com/generate_204
+    interval: 600
+    tolerance: 100
     lazy: true
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移 (AI 专用，稳如老狗)
+  # 2. 故障转移 (备用)
   - name: "📉 Auto Fallback"
     type: fallback
-    url: http://www.gstatic.com/generate_204
+    url: https://cp.cloudflare.com/generate_204
     interval: 300
     lazy: true
     proxies:
+      - "🇭🇰 Hong Kong"
       - "🇺🇸 USA"
       - "🇸🇬 Singapore"
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
       - "🚀 Auto Speed"
 
+  # === 特殊应用分组 ===
+  
+  # Social Media -> 测 Twitter (风控最严)
+  - name: "📲 Social Media"
+    type: url-test
+    url: "https://api.twitter.com"
+    interval: 600
+    tolerance: 100
+    lazy: true
+    proxies:
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
+      - "🇯🇵 Japan"
+      - "🇹🇼 Taiwan"
+      - "🇭🇰 Hong Kong"
+      - "🚀 Auto Speed"
+      - "🔰 Proxy Select"
+
+  # Streaming -> 测 YouTube
+  - name: "📹 Streaming"
+    type: url-test
+    url: "https://www.youtube.com/generate_204"
+    interval: 600
+    tolerance: 100
+    lazy: true
+    proxies:
+      - "🇭🇰 Hong Kong"
+      - "🇸🇬 Singapore"
+      - "🇯🇵 Japan"
+      - "🇺🇸 USA"
+      - "🇹🇼 Taiwan"
+      - "🚀 Auto Speed"
+      - "🔰 Proxy Select"
+  
+  # === AI Services (重点修复) ===
+  # 1. 测速地址改用 Google AI 核心 API (比 aistudio 首页更敏感，更能测出 Block)
+  # 2. 移除所有不确定地区 (Fallback, Proxy Select)，只保留白名单地区 (US, SG, JP, TW)
+  #    - 杜绝了 Clash 选择香港节点导致跳转文档的问题。
+  - name: "🤖 AI Services"
+    type: url-test
+    url: "https://alkalimakersuite-pa.clients6.google.com/"
+    interval: 600
+    tolerance: 100
+    lazy: true
+    proxies:
+      - "🇺🇸 USA"
+      - "🇸🇬 Singapore"
+      - "🇯🇵 Japan"
+      - "🇹🇼 Taiwan"
+
   # === 地区分组 ===
   - name: "🇭🇰 Hong Kong"
     type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
+    url: https://www.google.com/generate_204
+    interval: 600
     tolerance: 50
     lazy: true
     proxies:
@@ -267,8 +324,8 @@ ${makeGroup(hk)}
 
   - name: "🇹🇼 Taiwan"
     type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
+    url: https://www.google.com/generate_204
+    interval: 600
     tolerance: 50
     lazy: true
     proxies:
@@ -276,8 +333,8 @@ ${makeGroup(tw)}
 
   - name: "🇯🇵 Japan"
     type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
+    url: https://www.google.com/generate_204
+    interval: 600
     tolerance: 50
     lazy: true
     proxies:
@@ -285,8 +342,8 @@ ${makeGroup(jp)}
 
   - name: "🇸🇬 Singapore"
     type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
+    url: https://www.google.com/generate_204
+    interval: 600
     tolerance: 50
     lazy: true
     proxies:
@@ -294,8 +351,8 @@ ${makeGroup(sg)}
 
   - name: "🇺🇸 USA"
     type: url-test
-    url: http://www.gstatic.com/generate_204
-    interval: 300
+    url: https://www.google.com/generate_204
+    interval: 600
     tolerance: 50
     lazy: true
     proxies:
@@ -326,44 +383,13 @@ ${makeGroup(others)}
       - REJECT
       - DIRECT
 
-  # AI 服务
-  - name: "🤖 AI Services"
-    type: select
-    proxies:
-      - "📉 Auto Fallback"
-      - "🇺🇸 USA"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
-      - "🇹🇼 Taiwan"
-      - "🔰 Proxy Select" 
-
-  # Telegram
-  - name: "📲 Telegram"
-    type: select
-    proxies:
-      - "🚀 Auto Speed"
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🔰 Proxy Select"
-
-  # Streaming (确保存在)
-  - name: "📹 Streaming"
-    type: select
-    proxies:
-      - "🇭🇰 Hong Kong"
-      - "🇹🇼 Taiwan"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
-      - "🇺🇸 USA"
-      - "🚀 Auto Speed"
-
   # Apple
   - name: "🍎 Apple Services"
     type: select
     proxies:
       - DIRECT
-      - "🚀 Auto Speed"
       - "🇺🇸 USA"
+      - "🚀 Auto Speed"
 
   # 兜底
   - name: "🐟 Final Select"
@@ -442,7 +468,7 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. Google AI Studio 修复
+  # 2. Google AI Studio
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
@@ -471,7 +497,7 @@ rules:
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   
-  # 5. 其他 AI
+  # 5. AI 服务
   - DOMAIN-SUFFIX,v0.dev,🤖 AI Services
   - DOMAIN-SUFFIX,replit.com,🤖 AI Services
   - DOMAIN-SUFFIX,civitai.com,🤖 AI Services
@@ -494,15 +520,20 @@ rules:
   - DOMAIN-SUFFIX,huggingface.co,🤖 AI Services
   - DOMAIN-SUFFIX,suno.com,🤖 AI Services
 
-  # 6. Telegram
-  - DOMAIN-SUFFIX,t.me,📲 Telegram
-  - DOMAIN-SUFFIX,telegram.org,📲 Telegram
-  - DOMAIN-SUFFIX,telegram.me,📲 Telegram
-  - RULE-SET,TelegramCIDR,📲 Telegram
+  # 6. 社媒 (Telegram & X/Twitter)
+  - DOMAIN-SUFFIX,t.me,📲 Social Media
+  - DOMAIN-SUFFIX,telegram.org,📲 Social Media
+  - DOMAIN-SUFFIX,telegram.me,📲 Social Media
+  - RULE-SET,TelegramCIDR,📲 Social Media
+  - DOMAIN-SUFFIX,twitter.com,📲 Social Media
+  - DOMAIN-SUFFIX,x.com,📲 Social Media
+  - DOMAIN-SUFFIX,t.co,📲 Social Media
+  - DOMAIN-SUFFIX,twimg.com,📲 Social Media
 
   # 7. 流媒体
   - DOMAIN-SUFFIX,youtube.com,📹 Streaming
   - DOMAIN-SUFFIX,youtu.be,📹 Streaming
+  - DOMAIN-SUFFIX,googlevideo.com,📹 Streaming
   - DOMAIN-SUFFIX,netflix.com,📹 Streaming
   - DOMAIN-SUFFIX,disney.com,📹 Streaming
   
@@ -532,7 +563,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_stable.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_clean.yaml"
       }
     });
   }
