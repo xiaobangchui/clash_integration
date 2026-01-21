@@ -1,18 +1,15 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI 终极版 (2026 完美全功能版)
+ * Cloudflare Worker - Clash 聚合 AI 终极修正版 (2026 Hotfix)
  * 
- * 👑 新增功能：
- * 1. [Fallback] 故障转移组：比自动测速更稳定，适合 AI 挂机。
- * 2. [Others] 其他地区组：收纳韩国、欧洲等冷门节点，不浪费任何一个节点。
- * 3. [Telegram] 专属优化：强制代理，消息秒收。
- * 4. [Apple] 苹果优化：智能分流，解决 App Store 转圈问题。
- * 
- * 🛡️ 固有强项：
- * 多订阅整合 | 节点清洗 | Tun适配 | Bing/国内直连修复 | AI 全覆盖防风控
+ * 🚨 紧急修复日志：
+ * 1. [修复] 补回遗漏的 "📹 Streaming" 分组定义，解决启动报错。
+ * 2. [保持] Google AI Studio 修复 (强制 AI 组)。
+ * 3. [保持] GitHub 智能分流 (Copilot 走 AI，下载走通用)。
+ * 4. [保持] Fallback 故障转移机制。
  */
 
 const CONFIG = {
-  // 后端转换服务 (精选高可用)
+  // 后端转换服务 (高可用)
   backendUrls: [
     "https://api.wcc.best/sub",
     "https://subconverter.speedupvpn.com/sub",
@@ -22,7 +19,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪，过滤垃圾节点
+  // 强力去噪
   excludeKeywords: [
     "5x", "10x", "x5", "x10", 
     "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
@@ -38,7 +35,7 @@ export default {
     
     // 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Perfect Config Ready" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Streaming Group Restored" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -134,13 +131,12 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 4. 智能分组逻辑
+    // 4. 分组逻辑
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
     const sg  = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
-    // 新增：其他地区 (排除以上5个地区的所有节点)
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
 
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
@@ -148,12 +144,12 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 完美全功能版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 修复版`;
 
-    // 5. 生成配置文件
+    // 5. 生成配置
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Perfect Edition)
+# Custom Clash Config (Hotfix)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -206,7 +202,7 @@ dns:
     - '+.microsoft.com'
     - '+.deepseek.com'
     - '+.cn'
-    - '+.apple.com'    # Apple 服务尽量解析真实 IP
+    - '+.apple.com'
 
   default-nameserver:
     - 223.5.5.5
@@ -232,7 +228,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 自动测速 (追求最快)
+  # 1. 自动测速
   - name: "🚀 Auto Speed"
     type: url-test
     url: http://www.gstatic.com/generate_204
@@ -242,7 +238,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移 (追求稳定，AI 首选)
+  # 2. 故障转移 (AI 专用)
   - name: "📉 Auto Fallback"
     type: fallback
     url: http://www.gstatic.com/generate_204
@@ -326,7 +322,7 @@ ${makeGroup(others)}
       - REJECT
       - DIRECT
 
-  # AI 服务：默认使用 Fallback (稳定)
+  # AI 服务
   - name: "🤖 AI Services"
     type: select
     proxies:
@@ -337,6 +333,7 @@ ${makeGroup(others)}
       - "🇹🇼 Taiwan"
       - "🔰 Proxy Select" 
 
+  # Telegram
   - name: "📲 Telegram"
     type: select
     proxies:
@@ -345,6 +342,7 @@ ${makeGroup(others)}
       - "🇺🇸 USA"
       - "🔰 Proxy Select"
 
+  # Streaming (已补回)
   - name: "📹 Streaming"
     type: select
     proxies:
@@ -355,6 +353,7 @@ ${makeGroup(others)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
+  # Apple
   - name: "🍎 Apple Services"
     type: select
     proxies:
@@ -362,6 +361,7 @@ ${makeGroup(others)}
       - "🚀 Auto Speed"
       - "🇺🇸 USA"
 
+  # 兜底
   - name: "🐟 Final Select"
     type: select
     proxies:
@@ -438,39 +438,41 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. 国产 AI & 大厂服务直连
+  # 2. Google AI Studio 修复
+  - DOMAIN,aistudio.google.com,🤖 AI Services
+  - DOMAIN,makersuite.google.com,🤖 AI Services
+  - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
+  - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
+
+  # 3. 国产直连
   - DOMAIN-SUFFIX,deepseek.com,DIRECT
   - DOMAIN-SUFFIX,moonshot.cn,DIRECT
   - DOMAIN-SUFFIX,kimi.ai,DIRECT
   - DOMAIN-SUFFIX,chatglm.cn,DIRECT
   - DOMAIN-SUFFIX,yiyan.baidu.com,DIRECT
   - DOMAIN-SUFFIX,wenxin.baidu.com,DIRECT
-  - DOMAIN-SUFFIX,xinghuo.xfyun.cn,DIRECT
   - DOMAIN-SUFFIX,doubao.com,DIRECT
   - DOMAIN-SUFFIX,douyin.com,DIRECT
   - DOMAIN-SUFFIX,douyinstatic.com,DIRECT
   - DOMAIN-SUFFIX,bytedance.com,DIRECT
-  - DOMAIN-SUFFIX,volcengine.com,DIRECT
   - DOMAIN-SUFFIX,quark.cn,DIRECT
   - DOMAIN-SUFFIX,alicdn.com,DIRECT
-  - DOMAIN-SUFFIX,aliyun.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
-  - DOMAIN-SUFFIX,tmall.com,DIRECT
   - DOMAIN-SUFFIX,qq.com,DIRECT
-  - DOMAIN-SUFFIX,tencent.com,DIRECT
-  - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
 
-  # 3. 编程 & AI 服务
-  - DOMAIN-SUFFIX,github.com,🤖 AI Services
-  - DOMAIN-SUFFIX,githubusercontent.com,🤖 AI Services
+  # 4. GitHub 分流
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
+  - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
+  - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
+  
+  # 5. 其他 AI
   - DOMAIN-SUFFIX,v0.dev,🤖 AI Services
   - DOMAIN-SUFFIX,replit.com,🤖 AI Services
   - DOMAIN-SUFFIX,civitai.com,🤖 AI Services
   - DOMAIN-SUFFIX,midjourney.com,🤖 AI Services
   - DOMAIN-SUFFIX,leonardo.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,canva.com,🤖 AI Services
   - DOMAIN-SUFFIX,notion.so,🤖 AI Services
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
   - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
@@ -488,22 +490,22 @@ rules:
   - DOMAIN-SUFFIX,huggingface.co,🤖 AI Services
   - DOMAIN-SUFFIX,suno.com,🤖 AI Services
 
-  # 4. Telegram 优化 (IP + 域名)
+  # 6. Telegram
   - DOMAIN-SUFFIX,t.me,📲 Telegram
   - DOMAIN-SUFFIX,telegram.org,📲 Telegram
   - DOMAIN-SUFFIX,telegram.me,📲 Telegram
   - RULE-SET,TelegramCIDR,📲 Telegram
 
-  # 5. 流媒体
+  # 7. 流媒体
   - DOMAIN-SUFFIX,youtube.com,📹 Streaming
   - DOMAIN-SUFFIX,youtu.be,📹 Streaming
   - DOMAIN-SUFFIX,netflix.com,📹 Streaming
   - DOMAIN-SUFFIX,disney.com,📹 Streaming
   
-  # 6. Apple 服务
+  # 8. Apple
   - RULE-SET,Apple,🍎 Apple Services
 
-  # 7. 局域网 & 通用
+  # 9. 通用
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
@@ -526,7 +528,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_perfect_2026.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_hotfix.yaml"
       }
     });
   }
