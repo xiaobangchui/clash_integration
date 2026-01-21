@@ -2,5 +2,4 @@ name = "clash-sub"
 main = "worker.js"
 compatibility_date = "2024-01-01"
 
-# [vars]  <-- 删掉或注释掉
-# SUB_URLS = "" <-- 删掉或注释掉，因为现在由 GitHub Actions 接管了
+# 注意：这里千万不要有 [vars] ！！！
