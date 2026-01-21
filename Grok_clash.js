@@ -1,23 +1,11 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (💎 币圈防软封锁版 2026)
+ * Cloudflare Worker - Clash 聚合 AI (💎 GitHub 自动部署修正版 2026)
  * 
- * 🚨 核心策略调整说明：
- * 
- * 1. [💰 Crypto Services] 虚拟货币专用组
- *    - ❌ 移除 "🇭🇰 Hong Kong"：
- *      原因：Binance 对香港 IP 往往返回 "服务受限" 页面但状态码为 200。
- *      Clash 会误判其为"超快节点"并优先选择，导致用户无法交易。
- *    - ✅ 首选 "🇹🇼 Taiwan"：
- *      台湾是离大陆最近的"无限制地区"，延迟极低且政策最稳。
- *    - 策略：自动在 🇹🇼/🇯🇵/🇸🇬 中选最快的。
- * 
- * 2. [🤖 AI Services] 人工智能专用组
- *    - ❌ 移除 "🇭🇰 Hong Kong"：
- *      原因：防止 Google AI Studio 跳转到文档页面 (软封锁)。
- *    - ✅ 锁定 US/SG/JP/TW。
- * 
- * 3. [其他分组]
- *    - 📹 Streaming / 📲 Social：保留香港节点，因为 YouTube/Twitter 对香港友好且速度最快。
+ * 🛠️ 修复日志：
+ * 1. [修复] 移除 Crypto 组和 Proxy Select 组之间的循环引用 (Loop Detected)。
+ *    - 策略：Crypto 组只包含纯净的地区节点 (TW/JP/SG)，不再包含手动组。
+ * 2. [保持] 币安防软封锁策略 (移除香港，首选台湾)。
+ * 3. [保持] AI 物理隔离策略 (只选白名单地区)。
  */
 
 const CONFIG = {
@@ -47,7 +35,7 @@ export default {
     
     // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Crypto Soft-Ban Protection Active" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "No Loop Config Active" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -156,12 +144,12 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 💎 币圈防软封锁版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 💎 GitHub 自动部署版`;
 
     // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Crypto Soft-Ban Protection)
+# Custom Clash Config (No Loop Edition)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -270,9 +258,8 @@ ${makeGroup(nodeNames)}
 
   # === 特殊应用分组 ===
 
-  # 💰 Crypto Services (严格的白名单)
-  # 逻辑: 彻底剔除香港节点，防止"软封锁"(HTTP 200服务受限)。
-  # 优先: 台湾 (速度最快且安全) -> 日本 -> 新加坡。
+  # 💰 Crypto Services (无循环修正版)
+  # 逻辑: 仅包含具体的地区分组，不再包含 "Proxy Select"。
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -283,10 +270,8 @@ ${makeGroup(nodeNames)}
       - "🇹🇼 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🔰 Proxy Select" 
 
-  # 🤖 AI Services (Google AI 修复版)
-  # 逻辑: 彻底剔除香港，防止跳文档。
+  # 🤖 AI Services
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -299,7 +284,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
 
-  # 📲 Social: 推特专用 (推特不封香港，可以用香港)
+  # 📲 Social Media
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -315,7 +300,7 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
 
-  # 📹 Streaming: 视频专用 (香港通常最快)
+  # 📹 Streaming
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -489,7 +474,7 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. Crypto Services (虚拟货币分流)
+  # 2. Crypto Services
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -602,7 +587,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_crypto_safe.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_no_loop.yaml"
       }
     });
   }
