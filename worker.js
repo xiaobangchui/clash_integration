@@ -1,11 +1,21 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (💎 GitHub 自动部署修正版 2026)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终完美版)
  * 
- * 🛠️ 修复日志：
- * 1. [修复] 移除 Crypto 组和 Proxy Select 组之间的循环引用 (Loop Detected)。
- *    - 策略：Crypto 组只包含纯净的地区节点 (TW/JP/SG)，不再包含手动组。
- * 2. [保持] 币安防软封锁策略 (移除香港，首选台湾)。
- * 3. [保持] AI 物理隔离策略 (只选白名单地区)。
+ * 🌟 策略逻辑全解：
+ * 
+ * 1. [精准分流]: 
+ *    - 炒币 (Binance/OKX) -> 强制走 💰 Crypto Services (无香港，防软封锁)。
+ *    - AI (ChatGPT/Google) -> 强制走 🤖 AI Services (白名单地区，防跳文档)。
+ *    - 推特/油管 -> 强制走 📲 Social / 📹 Streaming (包含香港，测速保连通)。
+ * 
+ * 2. [日常浏览]:
+ *    - 漏网之鱼 (Final) -> 走 🔰 Proxy Select。
+ *    - 🔰 Proxy Select 默认选中 -> 🚀 Auto Speed。
+ *    - 🚀 Auto Speed -> 自动选最快节点 (通常是香港)。
+ *    - 结果：日常上网速度最快 (香港)，敏感操作自动切安全区 (台湾/新加坡)。
+ * 
+ * 3. [防环路]: 
+ *    - 移除了 Crypto 组对 Proxy Select 的引用，彻底解决 loop detected 报错。
  */
 
 const CONFIG = {
@@ -19,7 +29,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪
+  // 强力去噪 (过滤无效节点)
   excludeKeywords: [
     "5x", "10x", "x5", "x10", 
     "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
@@ -35,7 +45,7 @@ export default {
     
     // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "No Loop Config Active" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Final Perfect Config" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -144,12 +154,12 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 💎 GitHub 自动部署版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 2026 最终完美版`;
 
     // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (No Loop Edition)
+# Custom Clash Config (Final Edition)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -157,7 +167,7 @@ log-level: info
 ipv6: true
 external-controller: 127.0.0.1:9090
 
-# === 核心：真实连接检测 ===
+# === 核心：真实延迟检测 ===
 unified-delay: true
 tcp-concurrent: true
 
@@ -232,7 +242,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 全局自动测速
+  # 1. 全局自动测速 (包含香港，速度最快)
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -242,7 +252,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移
+  # 2. 故障转移 (包含香港，稳健)
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
@@ -250,16 +260,16 @@ ${makeGroup(nodeNames)}
     lazy: true
     proxies:
       - "🇭🇰 Hong Kong"
-      - "🇺🇸 USA"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
   # === 特殊应用分组 ===
 
-  # 💰 Crypto Services (无循环修正版)
-  # 逻辑: 仅包含具体的地区分组，不再包含 "Proxy Select"。
+  # 💰 Crypto Services (无香港，无循环)
+  # 策略：不含香港(防封)，不含手动组(防循环)。
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -271,7 +281,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 🤖 AI Services
+  # 🤖 AI Services (白名单)
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -284,7 +294,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
 
-  # 📲 Social Media
+  # 📲 Social Media (含香港)
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -300,7 +310,7 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
 
-  # 📹 Streaming
+  # 📹 Streaming (含香港)
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -367,15 +377,16 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
-  # === 功能分组 ===
+  # === 手动选择 (优化默认顺序) ===
+  # 默认选 🚀 Auto Speed，确保漏网之鱼流量走最快的香港节点。
   - name: "🔰 Proxy Select"
     type: select
     proxies:
+      - "🚀 Auto Speed"
+      - "🇭🇰 Hong Kong"
+      - "📉 Auto Fallback"
       - "💰 Crypto Services"
       - "🤖 AI Services"
-      - "🚀 Auto Speed"
-      - "📉 Auto Fallback"
-      - "🇭🇰 Hong Kong"
       - "🇹🇼 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
@@ -474,7 +485,7 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. Crypto Services
+  # 2. Crypto Services (虚拟货币分流)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -587,7 +598,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_no_loop.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_perfect.yaml"
       }
     });
   }
