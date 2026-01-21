@@ -1,26 +1,23 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (终极完美版 2026)
+ * Cloudflare Worker - Clash 聚合 AI (💎 币圈防软封锁版 2026)
  * 
- * 🛠️ 版本特性说明：
+ * 🚨 核心策略调整说明：
  * 
- * 1. [核心] 真实延迟检测 (Unified Delay):
- *    - 开启 unified-delay: true 和 tcp-concurrent: true。
- *    - 拒绝“假绿”节点，只有 HTTPS 握手成功并返回数据才算通。
+ * 1. [💰 Crypto Services] 虚拟货币专用组
+ *    - ❌ 移除 "🇭🇰 Hong Kong"：
+ *      原因：Binance 对香港 IP 往往返回 "服务受限" 页面但状态码为 200。
+ *      Clash 会误判其为"超快节点"并优先选择，导致用户无法交易。
+ *    - ✅ 首选 "🇹🇼 Taiwan"：
+ *      台湾是离大陆最近的"无限制地区"，延迟极低且政策最稳。
+ *    - 策略：自动在 🇹🇼/🇯🇵/🇸🇬 中选最快的。
  * 
- * 2. [策略] 场景化测速 (Scenario-Based Speedtest):
- *    - 📹 Streaming -> https://www.youtube.com/generate_204 (保视频)
- *    - 📲 Social    -> https://api.twitter.com (保推特/X)
- *    - 🤖 AI Services -> https://alkalimakersuite-pa.clients6.google.com/ (保 AI API)
- *    - 🌍 Regions   -> https://www.google.com/generate_204 (通用标准)
+ * 2. [🤖 AI Services] 人工智能专用组
+ *    - ❌ 移除 "🇭🇰 Hong Kong"：
+ *      原因：防止 Google AI Studio 跳转到文档页面 (软封锁)。
+ *    - ✅ 锁定 US/SG/JP/TW。
  * 
- * 3. [修复] AI "软封锁"物理隔离:
- *    - 🤖 AI Services 分组采用“白名单”机制。
- *    - 仅允许 US(美)/SG(新)/JP(日)/TW(台) 进入。
- *    - 彻底剔除 HK(香港) 和 Auto Fallback(可能含香港)，防止 Google AI 跳转文档页面。
- * 
- * 4. [优化] 省流防封模式:
- *    - 所有策略组开启 lazy: true。
- *    - 测速间隔统一为 600s (10分钟)，大幅降低机场连接数压力。
+ * 3. [其他分组]
+ *    - 📹 Streaming / 📲 Social：保留香港节点，因为 YouTube/Twitter 对香港友好且速度最快。
  */
 
 const CONFIG = {
@@ -34,7 +31,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪: 过滤掉不可用或垃圾节点
+  // 强力去噪
   excludeKeywords: [
     "5x", "10x", "x5", "x10", 
     "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
@@ -48,14 +45,14 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 0. 健康检查接口
+    // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Clash Config Generator Active" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Crypto Soft-Ban Protection Active" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 1. 获取订阅链接 (从环境变量 SUB_URLS 读取)
+    // 1. 获取订阅
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
@@ -69,10 +66,9 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端转换节点 (自动重试)
+    // 2. 遍历后端
     for (const backend of CONFIG.backendUrls) {
       const fetchPromises = AIRPORT_URLS.map(async (subUrl) => {
-        // 强制开启 udp, emoji, list 模式
         const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
         try {
           const resp = await fetch(convertUrl, {
@@ -81,7 +77,6 @@ export default {
           });
           if (!resp.ok) return null;
           const text = await resp.text();
-          // 简单校验返回内容是否有效
           if (!text.includes('proxies:') && !text.includes('name:')) return null;
           const infoHeader = resp.headers.get("Subscription-Userinfo");
           return { text, infoHeader };
@@ -96,7 +91,6 @@ export default {
         currentBackendValid = true;
         summary.count++;
         
-        // 解析流量信息
         if (res.infoHeader) {
           const info = {};
           res.infoHeader.split(';').forEach(p => {
@@ -112,12 +106,10 @@ export default {
           if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
         }
 
-        // 提取节点信息
         const matches = res.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
         allNodeLines.push(...matches);
       }
 
-      // 如果当前后端成功获取到节点，则跳出循环，不再尝试其他后端
       if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
@@ -125,7 +117,7 @@ export default {
       return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 3. 节点清洗与重命名
+    // 3. 节点处理
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -139,7 +131,6 @@ export default {
       
       if (excludeRegex.test(originalName)) continue;
 
-      // 节点重名处理
       let uniqueName = originalName;
       let counter = 1;
       while (nameSet.has(uniqueName)) {
@@ -152,7 +143,7 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 4. 动态分组逻辑
+    // 4. 分组逻辑
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -160,19 +151,17 @@ export default {
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
 
-    // 辅助函数：生成 YAML 列表
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
 
-    // 生成头部统计信息
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 终极完美版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 💎 币圈防软封锁版`;
 
-    // 5. 组装最终 YAML 配置
+    // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (Final Perfect Edition)
+# Custom Clash Config (Crypto Soft-Ban Protection)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -180,13 +169,11 @@ log-level: info
 ipv6: true
 external-controller: 127.0.0.1:9090
 
-# === 关键设置：真实连接检测 ===
-# 开启后，延迟 = TCP握手 + SSL握手 + HTTP响应。
-# 只有能真正传输数据的节点才会被选中，彻底解决“假绿”问题。
+# === 核心：真实连接检测 ===
 unified-delay: true
 tcp-concurrent: true
 
-# === Tun 模式 (虚拟网卡) ===
+# === Tun 模式 ===
 tun:
   enable: true
   stack: system
@@ -195,7 +182,7 @@ tun:
   dns-hijack:
     - any:53
 
-# === 流量嗅探 ===
+# === 嗅探 ===
 sniffer:
   enable: true
   parse-pure-ip: true
@@ -208,7 +195,7 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
-# === DNS 设置 (Fake-IP 模式) ===
+# === DNS ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -257,7 +244,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 全局自动测速 (基准 URL: Cloudflare)
+  # 1. 全局自动测速
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -267,7 +254,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移 (备用策略)
+  # 2. 故障转移
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
@@ -281,10 +268,38 @@ ${makeGroup(nodeNames)}
       - "🇹🇼 Taiwan"
       - "🚀 Auto Speed"
 
-  # === 特殊应用分组 (场景化测速) ===
-  
-  # Social Media -> 强制测 Twitter。
-  # 解决：节点通用测速虽快，但 Twitter 实际上连不上的问题。
+  # === 特殊应用分组 ===
+
+  # 💰 Crypto Services (严格的白名单)
+  # 逻辑: 彻底剔除香港节点，防止"软封锁"(HTTP 200服务受限)。
+  # 优先: 台湾 (速度最快且安全) -> 日本 -> 新加坡。
+  - name: "💰 Crypto Services"
+    type: url-test
+    url: "https://www.binance.com"
+    interval: 600
+    tolerance: 100
+    lazy: true
+    proxies:
+      - "🇹🇼 Taiwan"
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🔰 Proxy Select" 
+
+  # 🤖 AI Services (Google AI 修复版)
+  # 逻辑: 彻底剔除香港，防止跳文档。
+  - name: "🤖 AI Services"
+    type: url-test
+    url: "https://alkalimakersuite-pa.clients6.google.com/"
+    interval: 600
+    tolerance: 100
+    lazy: true
+    proxies:
+      - "🇺🇸 USA"
+      - "🇸🇬 Singapore"
+      - "🇯🇵 Japan"
+      - "🇹🇼 Taiwan"
+
+  # 📲 Social: 推特专用 (推特不封香港，可以用香港)
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -300,8 +315,7 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
 
-  # Streaming -> 强制测 YouTube。
-  # 解决：确保选中的节点可以流畅观看视频。
+  # 📹 Streaming: 视频专用 (香港通常最快)
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -316,23 +330,8 @@ ${makeGroup(nodeNames)}
       - "🇹🇼 Taiwan"
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
-  
-  # AI Services -> 强制测 Google AI API。
-  # 策略：[白名单] 仅允许 US, SG, JP, TW。
-  # 作用：物理隔离香港节点，杜绝 Google AI Studio 跳转文档页面的软封锁。
-  - name: "🤖 AI Services"
-    type: url-test
-    url: "https://alkalimakersuite-pa.clients6.google.com/"
-    interval: 600
-    tolerance: 100
-    lazy: true
-    proxies:
-      - "🇺🇸 USA"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
-      - "🇹🇼 Taiwan"
 
-  # === 地区分组 (统一使用 Google 测速) ===
+  # === 地区分组 ===
   - name: "🇭🇰 Hong Kong"
     type: url-test
     url: https://www.google.com/generate_204
@@ -387,6 +386,8 @@ ${makeGroup(others)}
   - name: "🔰 Proxy Select"
     type: select
     proxies:
+      - "💰 Crypto Services"
+      - "🤖 AI Services"
       - "🚀 Auto Speed"
       - "📉 Auto Fallback"
       - "🇭🇰 Hong Kong"
@@ -403,7 +404,7 @@ ${makeGroup(others)}
       - REJECT
       - DIRECT
 
-  # Apple (通常直连即可，部分服务可走美国)
+  # Apple
   - name: "🍎 Apple Services"
     type: select
     proxies:
@@ -411,7 +412,7 @@ ${makeGroup(others)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  # 兜底选择
+  # 兜底
   - name: "🐟 Final Select"
     type: select
     proxies:
@@ -425,7 +426,6 @@ ${makeGroup(others)}
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
 
-# === 规则集提供商 ===
 rule-providers:
   Reject:
     type: http
@@ -476,12 +476,11 @@ rule-providers:
     path: ./ruleset/telegramcidr.txt
     interval: 86400
 
-# === 路由规则 ===
 rules:
   - RULE-SET,Reject,🛑 AdBlock
   - DST-PORT,123,DIRECT
 
-  # 1. Bing / Microsoft 直连 (优化国内体验)
+  # 1. Bing / Microsoft
   - DOMAIN,bing.com,DIRECT
   - DOMAIN-SUFFIX,bing.com,DIRECT
   - DOMAIN-SUFFIX,bing.net,DIRECT
@@ -490,13 +489,31 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. Google AI Studio (强制 AI 组)
+  # 2. Crypto Services (虚拟货币分流)
+  - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
+  - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
+  - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,htx.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,kucoin.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,mexc.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,kraken.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,coinbase.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,coinmarketcap.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,coingecko.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
+
+  # 3. Google AI
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
 
-  # 3. 国产直连 (DeepSeek/Moonshot/Baidu/Ali/Tencent)
+  # 4. 国产直连
   - DOMAIN-SUFFIX,deepseek.com,DIRECT
   - DOMAIN-SUFFIX,moonshot.cn,DIRECT
   - DOMAIN-SUFFIX,kimi.ai,DIRECT
@@ -513,13 +530,13 @@ rules:
   - DOMAIN-SUFFIX,qq.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
 
-  # 4. GitHub 分流 (Copilot 走 AI，其他手动)
+  # 5. GitHub
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   
-  # 5. AI 服务全集 (Grok/OpenAI/Claude/Meta/Perplexity)
+  # 6. AI Services
   - DOMAIN-SUFFIX,v0.dev,🤖 AI Services
   - DOMAIN-SUFFIX,replit.com,🤖 AI Services
   - DOMAIN-SUFFIX,civitai.com,🤖 AI Services
@@ -542,7 +559,7 @@ rules:
   - DOMAIN-SUFFIX,huggingface.co,🤖 AI Services
   - DOMAIN-SUFFIX,suno.com,🤖 AI Services
 
-  # 6. 社媒 (Telegram & X/Twitter)
+  # 7. Social Media
   - DOMAIN-SUFFIX,t.me,📲 Social Media
   - DOMAIN-SUFFIX,telegram.org,📲 Social Media
   - DOMAIN-SUFFIX,telegram.me,📲 Social Media
@@ -552,17 +569,17 @@ rules:
   - DOMAIN-SUFFIX,t.co,📲 Social Media
   - DOMAIN-SUFFIX,twimg.com,📲 Social Media
 
-  # 7. 流媒体
+  # 8. Streaming
   - DOMAIN-SUFFIX,youtube.com,📹 Streaming
   - DOMAIN-SUFFIX,youtu.be,📹 Streaming
   - DOMAIN-SUFFIX,googlevideo.com,📹 Streaming
   - DOMAIN-SUFFIX,netflix.com,📹 Streaming
   - DOMAIN-SUFFIX,disney.com,📹 Streaming
   
-  # 8. Apple
+  # 9. Apple
   - RULE-SET,Apple,🍎 Apple Services
 
-  # 9. 通用规则
+  # 10. General
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
@@ -579,14 +596,13 @@ rules:
   - MATCH,🐟 Final Select
 `;
 
-    // 6. 返回结果
     const userinfo = `upload=${Math.round(totalUpload)};download=${Math.round(totalDownload)};total=${summary.total};expire=${summary.expire === Infinity ? 0 : summary.expire}`;
 
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_perfect.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_crypto_safe.yaml"
       }
     });
   }
