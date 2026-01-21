@@ -12,14 +12,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
+      # [关键步骤] 动态把 GitHub Secret 写入到 wrangler.toml
+      # 这样 wrangler 就会把它当作普通变量上传，100% 成功
+      - name: Inject Secrets into Config
+        run: |
+          echo "" >> wrangler.toml
+          echo "[vars]" >> wrangler.toml
+          echo "SUB_URLS = \"${{ secrets.SUB_URLS }}\"" >> wrangler.toml
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CF_API_TOKEN }}
-          accountId: ${{ secrets.CF_ACCOUNT_ID }} # 👈 这一行必须有！
-          # 告诉 Wrangler 要上传哪个 Secret
-          secrets: |
-            SUB_URLS
-        env:
-          # 将 GitHub 的 Secret 传递给环境变量
-          SUB_URLS: ${{ secrets.SUB_URLS }}
+          accountId: ${{ secrets.CF_ACCOUNT_ID }}
+          # 注意：这里不需要再写 secrets: ... 了
