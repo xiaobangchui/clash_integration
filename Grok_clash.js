@@ -1,21 +1,30 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🧠 AI 纯净逻辑版)
+ * Cloudflare Worker - Clash 聚合 AI (终极完美版 2026)
  * 
- * 🛠️ 针对 "AI 跳转文档/软封锁" 问题的物理修复：
+ * 🛠️ 版本特性说明：
  * 
- * 1. [关键] AI 分组实行 "地域白名单" 策略。
- *    - 移除 "📉 Auto Fallback" 和 "🔰 Proxy Select" (因为它们可能包含香港节点)。
- *    - 仅保留 US/SG/JP/TW。Clash 只能在这些白名单地区中选，彻底杜绝跳文档问题。
+ * 1. [核心] 真实延迟检测 (Unified Delay):
+ *    - 开启 unified-delay: true 和 tcp-concurrent: true。
+ *    - 拒绝“假绿”节点，只有 HTTPS 握手成功并返回数据才算通。
  * 
- * 2. [关键] AI 测速 URL 更换为核心 API。
- *    - URL: https://alkalimakersuite-pa.clients6.google.com/
- *    - 效果：相比前端页面，API 接口在被封锁时更容易返回错误状态，让 Clash 识别并切换。
+ * 2. [策略] 场景化测速 (Scenario-Based Speedtest):
+ *    - 📹 Streaming -> https://www.youtube.com/generate_204 (保视频)
+ *    - 📲 Social    -> https://api.twitter.com (保推特/X)
+ *    - 🤖 AI Services -> https://alkalimakersuite-pa.clients6.google.com/ (保 AI API)
+ *    - 🌍 Regions   -> https://www.google.com/generate_204 (通用标准)
  * 
- * 3. [其他] 保持 Streaming/Social 的专组专测逻辑。
+ * 3. [修复] AI "软封锁"物理隔离:
+ *    - 🤖 AI Services 分组采用“白名单”机制。
+ *    - 仅允许 US(美)/SG(新)/JP(日)/TW(台) 进入。
+ *    - 彻底剔除 HK(香港) 和 Auto Fallback(可能含香港)，防止 Google AI 跳转文档页面。
+ * 
+ * 4. [优化] 省流防封模式:
+ *    - 所有策略组开启 lazy: true。
+ *    - 测速间隔统一为 600s (10分钟)，大幅降低机场连接数压力。
  */
 
 const CONFIG = {
-  // 后端转换服务 (高可用)
+  // 后端转换服务 (高可用轮询)
   backendUrls: [
     "https://api.wcc.best/sub",
     "https://subconverter.speedupvpn.com/sub",
@@ -25,7 +34,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪
+  // 强力去噪: 过滤掉不可用或垃圾节点
   excludeKeywords: [
     "5x", "10x", "x5", "x10", 
     "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
@@ -39,20 +48,20 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 健康检查
+    // 0. 健康检查接口
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "AI Clean Mode Active" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Clash Config Generator Active" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 1. 获取订阅
+    // 1. 获取订阅链接 (从环境变量 SUB_URLS 读取)
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
 
     if (AIRPORT_URLS.length === 0) {
-      return new Response("配置错误：请填写 SUB_URLS 环境变量。", { status: 500 });
+      return new Response("配置错误：请在 Cloudflare 环境变量中设置 SUB_URLS。", { status: 500 });
     }
 
     let allNodeLines = [];
@@ -60,9 +69,10 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端
+    // 2. 遍历后端转换节点 (自动重试)
     for (const backend of CONFIG.backendUrls) {
       const fetchPromises = AIRPORT_URLS.map(async (subUrl) => {
+        // 强制开启 udp, emoji, list 模式
         const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
         try {
           const resp = await fetch(convertUrl, {
@@ -71,6 +81,7 @@ export default {
           });
           if (!resp.ok) return null;
           const text = await resp.text();
+          // 简单校验返回内容是否有效
           if (!text.includes('proxies:') && !text.includes('name:')) return null;
           const infoHeader = resp.headers.get("Subscription-Userinfo");
           return { text, infoHeader };
@@ -85,6 +96,7 @@ export default {
         currentBackendValid = true;
         summary.count++;
         
+        // 解析流量信息
         if (res.infoHeader) {
           const info = {};
           res.infoHeader.split(';').forEach(p => {
@@ -100,18 +112,20 @@ export default {
           if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
         }
 
+        // 提取节点信息
         const matches = res.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
         allNodeLines.push(...matches);
       }
 
+      // 如果当前后端成功获取到节点，则跳出循环，不再尝试其他后端
       if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
     if (allNodeLines.length === 0) {
-      return new Response("错误：节点获取失败，请检查订阅链接。", { status: 500 });
+      return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 3. 节点处理
+    // 3. 节点清洗与重命名
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -125,6 +139,7 @@ export default {
       
       if (excludeRegex.test(originalName)) continue;
 
+      // 节点重名处理
       let uniqueName = originalName;
       let counter = 1;
       while (nameSet.has(uniqueName)) {
@@ -137,7 +152,7 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 4. 分组逻辑
+    // 4. 动态分组逻辑
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -145,17 +160,19 @@ export default {
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
 
+    // 辅助函数：生成 YAML 列表
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
 
+    // 生成头部统计信息
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🧠 AI 纯净逻辑版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 终极完美版`;
 
-    // 5. 生成配置
+    // 5. 组装最终 YAML 配置
     const yaml = `
 ${trafficHeader}
-# Custom Clash Config (AI Pure Edition)
+# Custom Clash Config (Final Perfect Edition)
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -163,11 +180,13 @@ log-level: info
 ipv6: true
 external-controller: 127.0.0.1:9090
 
-# === 核心：真实延迟检测 ===
+# === 关键设置：真实连接检测 ===
+# 开启后，延迟 = TCP握手 + SSL握手 + HTTP响应。
+# 只有能真正传输数据的节点才会被选中，彻底解决“假绿”问题。
 unified-delay: true
 tcp-concurrent: true
 
-# === Tun 模式 ===
+# === Tun 模式 (虚拟网卡) ===
 tun:
   enable: true
   stack: system
@@ -176,7 +195,7 @@ tun:
   dns-hijack:
     - any:53
 
-# === 嗅探 ===
+# === 流量嗅探 ===
 sniffer:
   enable: true
   parse-pure-ip: true
@@ -189,7 +208,7 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
-# === DNS ===
+# === DNS 设置 (Fake-IP 模式) ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -238,7 +257,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 全局自动测速 (基准: Cloudflare)
+  # 1. 全局自动测速 (基准 URL: Cloudflare)
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -248,7 +267,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移 (备用)
+  # 2. 故障转移 (备用策略)
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
@@ -262,9 +281,10 @@ ${makeGroup(nodeNames)}
       - "🇹🇼 Taiwan"
       - "🚀 Auto Speed"
 
-  # === 特殊应用分组 ===
+  # === 特殊应用分组 (场景化测速) ===
   
-  # Social Media -> 测 Twitter (风控最严)
+  # Social Media -> 强制测 Twitter。
+  # 解决：节点通用测速虽快，但 Twitter 实际上连不上的问题。
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -280,7 +300,8 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
 
-  # Streaming -> 测 YouTube
+  # Streaming -> 强制测 YouTube。
+  # 解决：确保选中的节点可以流畅观看视频。
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -296,10 +317,9 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
   
-  # === AI Services (重点修复) ===
-  # 1. 测速地址改用 Google AI 核心 API (比 aistudio 首页更敏感，更能测出 Block)
-  # 2. 移除所有不确定地区 (Fallback, Proxy Select)，只保留白名单地区 (US, SG, JP, TW)
-  #    - 杜绝了 Clash 选择香港节点导致跳转文档的问题。
+  # AI Services -> 强制测 Google AI API。
+  # 策略：[白名单] 仅允许 US, SG, JP, TW。
+  # 作用：物理隔离香港节点，杜绝 Google AI Studio 跳转文档页面的软封锁。
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -312,7 +332,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
 
-  # === 地区分组 ===
+  # === 地区分组 (统一使用 Google 测速) ===
   - name: "🇭🇰 Hong Kong"
     type: url-test
     url: https://www.google.com/generate_204
@@ -383,7 +403,7 @@ ${makeGroup(others)}
       - REJECT
       - DIRECT
 
-  # Apple
+  # Apple (通常直连即可，部分服务可走美国)
   - name: "🍎 Apple Services"
     type: select
     proxies:
@@ -391,7 +411,7 @@ ${makeGroup(others)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  # 兜底
+  # 兜底选择
   - name: "🐟 Final Select"
     type: select
     proxies:
@@ -405,6 +425,7 @@ ${makeGroup(others)}
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
 
+# === 规则集提供商 ===
 rule-providers:
   Reject:
     type: http
@@ -455,11 +476,12 @@ rule-providers:
     path: ./ruleset/telegramcidr.txt
     interval: 86400
 
+# === 路由规则 ===
 rules:
   - RULE-SET,Reject,🛑 AdBlock
   - DST-PORT,123,DIRECT
 
-  # 1. Bing / Microsoft 直连
+  # 1. Bing / Microsoft 直连 (优化国内体验)
   - DOMAIN,bing.com,DIRECT
   - DOMAIN-SUFFIX,bing.com,DIRECT
   - DOMAIN-SUFFIX,bing.net,DIRECT
@@ -468,13 +490,13 @@ rules:
   - DOMAIN-SUFFIX,windows.net,DIRECT
   - DOMAIN-SUFFIX,office.com,DIRECT
 
-  # 2. Google AI Studio
+  # 2. Google AI Studio (强制 AI 组)
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
 
-  # 3. 国产直连
+  # 3. 国产直连 (DeepSeek/Moonshot/Baidu/Ali/Tencent)
   - DOMAIN-SUFFIX,deepseek.com,DIRECT
   - DOMAIN-SUFFIX,moonshot.cn,DIRECT
   - DOMAIN-SUFFIX,kimi.ai,DIRECT
@@ -491,13 +513,13 @@ rules:
   - DOMAIN-SUFFIX,qq.com,DIRECT
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
 
-  # 4. GitHub 分流
+  # 4. GitHub 分流 (Copilot 走 AI，其他手动)
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   
-  # 5. AI 服务
+  # 5. AI 服务全集 (Grok/OpenAI/Claude/Meta/Perplexity)
   - DOMAIN-SUFFIX,v0.dev,🤖 AI Services
   - DOMAIN-SUFFIX,replit.com,🤖 AI Services
   - DOMAIN-SUFFIX,civitai.com,🤖 AI Services
@@ -540,7 +562,7 @@ rules:
   # 8. Apple
   - RULE-SET,Apple,🍎 Apple Services
 
-  # 9. 通用
+  # 9. 通用规则
   - IP-CIDR,192.168.0.0/16,DIRECT,no-resolve
   - IP-CIDR,10.0.0.0/8,DIRECT,no-resolve
   - IP-CIDR,172.16.0.0/12,DIRECT,no-resolve
@@ -557,13 +579,14 @@ rules:
   - MATCH,🐟 Final Select
 `;
 
+    // 6. 返回结果
     const userinfo = `upload=${Math.round(totalUpload)};download=${Math.round(totalDownload)};total=${summary.total};expire=${summary.expire === Infinity ? 0 : summary.expire}`;
 
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_clean.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_perfect.yaml"
       }
     });
   }
