@@ -481,7 +481,10 @@ rules:
   # 9. 游戏下载优化 (Steam CN 直连)
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
-
+# === 软件官网优化 (修复 qBittorrent 等打不开) ===
+  - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
+  - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
+  - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
   # 10. 国产/直连
   - GEOSITE,cn,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
