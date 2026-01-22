@@ -286,13 +286,13 @@ ${makeGroup(nodeNames)}
     tolerance: 100
     lazy: true
     proxies:
+      - "🚀 Auto Speed"
+      - "🔰 Proxy Select"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
       - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
       - "🇭🇰 Hong Kong"
-      - "🚀 Auto Speed"
-      - "🔰 Proxy Select"
 
   # 📹 Streaming
   - name: "📹 Streaming"
@@ -302,13 +302,13 @@ ${makeGroup(nodeNames)}
     tolerance: 100
     lazy: true
     proxies:
+      - "🚀 Auto Speed"
+      - "🔰 Proxy Select"
       - "🇭🇰 Hong Kong"
       - "🇸🇬 Singapore"
       - "🇯🇵 Japan"
       - "🇺🇸 USA"
       - "🇹🇼 Taiwan"
-      - "🚀 Auto Speed"
-      - "🔰 Proxy Select"
 
   # === 地区分组 ===
   - name: "🇭🇰 Hong Kong"
