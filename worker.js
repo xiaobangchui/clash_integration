@@ -1,16 +1,21 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终完整版 - GPT 上传修复 + 大陆优化 + 稳定运行)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 终极·无懈可击·完美融合版)
  * 
- * 整合两版优点：
- * - worker.js：严格节点过滤、完整 DNS/AI 域名、Promise.allSettled 容错、fake-ip-filter 优化。
- * - worker-1.js：详细注释、GitHub 防误杀顺序、Telegram IP 防语音中断强调。
- * - 规则顺序：从局域网/阻断 → 特定服务 (Crypto/AI/GitHub) → 大流量 → 直连 → GFW → 兜底。
- * - 域名顺序：高频/关键在前 (e.g., AI 包含 bard；国产添加 bilibili 等)。
- * - 检索顺序：后端轮询 + allSettled 容错；节点过滤严格。
- * - 中国大陆优化：添加更多直连域名 (youku/iqiyi 等)，加强广告阻断；DNS 防污染强。
+ * 📝 版本校验：FINAL-FUSION-MAX
+ * 
+ * 💎 融合两版优点，打造最强配置：
+ * 1. [核心稳] 采用 Promise.allSettled 容错机制，后端挂几个都不怕。
+ * 2. [网络稳] 关闭 TCP 并发，开启 UDP，混合 DNS (阿里/腾讯/Cloudflare)。
+ * 3. [国内快] 显式直连 B站/淘宝/优酷等，配合丰富的 Fake-IP 过滤。
+ * 4. [分流准] 
+ *    - 💰 Crypto: 剔除香港 (防软封锁)，首选台湾。
+ *    - 🤖 AI: 剔除香港 (防跳文档)，优选低延迟的日本/新加坡。
+ *    - 🛑 去广告: 集成 GEOSITE 广告库，净化网络。
+ * 5. [修复全] 包含 GPT上传修复、GitHub 直连修复、Grok/Bard 支持。
  */
 
 const CONFIG = {
+  // 后端转换服务 (高可用轮询)
   backendUrls: [
     "https://api.wcc.best/sub",
     "https://subconverter.speedupvpn.com/sub",
@@ -20,7 +25,14 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  excludeKeywords: ["5x", "10x", "x5", "x10", "到期", "剩余", "流量", "太旧", "过期", "时间", "重置", "试用", "赠送", "限速", "低速", "群", "官网", "客服", "网站", "更新", "通知", "机场", "订阅", "限时", "促销"],
+  // 强力去噪 (过滤无效/到期/限速/广告节点)
+  excludeKeywords: [
+    "5x", "10x", "x5", "x10", 
+    "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
+    "试用", "赠送", "限速", "低速", 
+    "群", "官网", "客服", "网站", "更新", "通知", 
+    "机场", "订阅", "限时", "促销"
+  ],
   fetchTimeout: 30000,
 };
 
@@ -28,55 +40,91 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
+    // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "GPT Upload Fixed & Stable Complete" }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "ok", msg: "Fusion Stable Version" }), {
+        headers: { "Content-Type": "application/json" }
+      });
     }
 
-    const AIRPORT_URLS = env.SUB_URLS ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
-    if (AIRPORT_URLS.length === 0) return new Response("配置错误：未找到 SUB_URLS 环境变量。", { status: 500 });
+    // 1. 获取订阅
+    const AIRPORT_URLS = env.SUB_URLS 
+      ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
+      : [];
+
+    if (AIRPORT_URLS.length === 0) {
+      return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
+    }
 
     let allNodeLines = [];
     let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
-    let totalUpload = 0; let totalDownload = 0;
+    let totalUpload = 0;
+    let totalDownload = 0;
 
+    // 2. 遍历后端 (使用 allSettled 容错)
+    const fetchPromises = AIRPORT_URLS.map(async (subUrl) => {
+      // 关键参数: udp=true, emoji=true
+      const convertUrl = `${CONFIG.backendUrls[Math.floor(Math.random() * CONFIG.backendUrls.length)]}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+      // 这里稍微优化了一下：每次请求随机选一个后端，负载均衡
+      // 但为了保险，我们还是遍历所有后端比较稳妥，下面逻辑保持遍历
+      return null; 
+    });
+
+    // 重新编写遍历逻辑，确保高可用
     for (const backend of CONFIG.backendUrls) {
-      const fetchPromises = AIRPORT_URLS.map(async (subUrl) => {
-        const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
-        try {
-          const resp = await fetch(convertUrl, { headers: { "User-Agent": CONFIG.userAgent }, signal: AbortSignal.timeout(CONFIG.fetchTimeout) });
-          if (!resp.ok) return null;
-          const text = await resp.text();
-          if (!text.includes('proxies:') && !text.includes('name:')) return null;
-          const infoHeader = resp.headers.get("Subscription-Userinfo");
-          return { text, infoHeader };
-        } catch (e) { return null; }
-      });
+        const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
+            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+            try {
+                const resp = await fetch(convertUrl, {
+                    headers: { "User-Agent": CONFIG.userAgent },
+                    signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+                });
+                if (!resp.ok) return null;
+                const text = await resp.text();
+                if (!text.includes('proxies:') && !text.includes('name:')) return null;
+                const infoHeader = resp.headers.get("Subscription-Userinfo");
+                return { text, infoHeader };
+            } catch (e) { return null; }
+        });
 
-      const results = await Promise.allSettled(fetchPromises); // 优化：使用allSettled容错
-      let currentBackendValid = false;
+        // 使用 allSettled 即使部分失败也不影响整体
+        const results = await Promise.allSettled(batchPromises);
+        let currentBackendValid = false;
 
-      for (const res of results) {
-        if (res.status !== 'fulfilled' || !res.value) continue;
-        currentBackendValid = true;
-        summary.count++;
-        if (res.value.infoHeader) {
-          const info = {};
-          res.value.infoHeader.split(';').forEach(p => { const [k, v] = p.trim().split('='); if (k && v) info[k.trim()] = parseInt(v) || 0; });
-          totalUpload += (info.upload || 0); totalDownload += (info.download || 0);
-          summary.used += (info.upload || 0) + (info.download || 0); summary.total += (info.total || 0);
-          if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
-          const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
-          if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
+        for (const res of results) {
+            if (res.status === 'fulfilled' && res.value) {
+                currentBackendValid = true;
+                summary.count++;
+                if (res.value.infoHeader) {
+                    const info = {};
+                    res.value.infoHeader.split(';').forEach(p => {
+                        const [k, v] = p.trim().split('=');
+                        if (k && v) info[k.trim()] = parseInt(v) || 0;
+                    });
+                    totalUpload += (info.upload || 0);
+                    totalDownload += (info.download || 0);
+                    summary.used += (info.upload || 0) + (info.download || 0);
+                    summary.total += (info.total || 0);
+                    if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
+                    const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
+                    if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
+                }
+                const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
+                allNodeLines.push(...matches);
+            }
         }
-        const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
-        allNodeLines.push(...matches);
-      }
-      if (currentBackendValid && allNodeLines.length > 0) break;
+        // 只要当前后端成功解析出节点，就停止尝试其他后端，节省资源
+        if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
-    if (allNodeLines.length === 0) return new Response("错误：无法获取节点。", { status: 500 });
+    if (allNodeLines.length === 0) {
+      return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
+    }
 
-    const nodes = []; const nodeNames = []; const nameSet = new Set();
+    // 3. 节点处理
+    const nodes = [];
+    const nodeNames = [];
+    const nameSet = new Set();
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
     for (const line of allNodeLines) {
@@ -84,27 +132,37 @@ export default {
       const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
       let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+      
       if (excludeRegex.test(originalName)) continue;
-      let uniqueName = originalName; let counter = 1;
-      while (nameSet.has(uniqueName)) { uniqueName = `${originalName}_${counter++}`; }
+
+      let uniqueName = originalName;
+      let counter = 1;
+      while (nameSet.has(uniqueName)) {
+        uniqueName = `${originalName}_${counter++}`;
+      }
       nameSet.add(uniqueName);
+
       proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
       nodes.push("  " + proxyContent);
       nodeNames.push(uniqueName);
     }
 
-    const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
-    const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
-    const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
-    const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
+    // 4. 分组逻辑
+    const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
+    const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
+    const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
+    const sg  = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
+
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
+
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 完整稳定版 (GPT 上传修复 + 大陆优化)`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 终极融合版`;
 
+    // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
 mixed-port: 7890
@@ -114,9 +172,10 @@ log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
 
+# === 性能优化 ===
 udp: true
 unified-delay: true
-tcp-concurrent: false
+tcp-concurrent: false # 关闭并发，稳如老狗
 
 geodata-mode: true
 geox-url:
@@ -150,6 +209,8 @@ dns:
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
+  
+  # 扩展 Fake-IP 过滤 (防 DNS 污染)
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -161,15 +222,18 @@ dns:
     - '+.alicdn.com'
     - '+.aliyun.com'
     - '+.cn'
-    - '+.bilibili.com'  # 优化：添加bilibili直连
-    - '+.taobao.com'    # 优化：添加taobao直连
+    - '+.bilibili.com'
+    - '+.taobao.com'
+    - '+.jd.com'
+
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
+  # 混合 DNS (阿里DoH + 腾讯DoH + UDP 兜底)
   nameserver:
     - https://dns.alidns.com/dns-query
+    - https://dns.weixin.qq.com/dns-query
     - https://doh.pub/dns-query
-    - https://dns.weixin.qq.com/dns-query  # 优化：添加腾讯DoH
     - 223.5.5.5
   fallback:
     - https://1.1.1.1/dns-query
@@ -185,6 +249,7 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
+  # 1. 全局自动测速
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -194,6 +259,7 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
+  # 2. 故障转移
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
@@ -207,6 +273,7 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
+  # 3. Crypto Services (防封: 剔除香港，优选台湾)
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -218,6 +285,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
+  # 4. AI Services (防封: 剔除香港，优选低延迟日本/新加坡)
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -225,11 +293,12 @@ ${makeGroup(nodeNames)}
     tolerance: 100
     lazy: true
     proxies:
-      - "🇺🇸 USA"  # 优化：优先USA
-      - "🇯🇵 Japan"  # 优化：次优先JP
+      - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
       - "🇹🇼 Taiwan"
 
+  # 5. Social Media
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -239,12 +308,13 @@ ${makeGroup(nodeNames)}
     proxies:
       - "🚀 Auto Speed"
       - "🔰 Proxy Select"
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🇯🇵 Japan"
-      - "🇹🇼 Taiwan"
       - "🇭🇰 Hong Kong"
+      - "🇸🇬 Singapore"
+      - "🇯🇵 Japan"
+      - "🇺🇸 USA"
+      - "🇹🇼 Taiwan"
 
+  # 6. Streaming
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -260,6 +330,7 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🇹🇼 Taiwan"
 
+  # === 地区分组 ===
   - name: "🇭🇰 Hong Kong"
     type: url-test
     url: https://www.google.com/generate_204
@@ -310,6 +381,7 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
+  # === 手动选择 (默认 Auto Speed) ===
   - name: "🔰 Proxy Select"
     type: select
     proxies:
@@ -409,17 +481,18 @@ rule-providers:
     interval: 86400
 
 rules:
-  # 1. 局域网/Direct 优先 (防止内网卡顿)
+  # 1. 局域网/Direct 优先 (内网直连)
   - GEOSITE,private,DIRECT
   - GEOIP,private,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
 
-  # 2. 阻断 UDP 443 (防 QUIC 导致 Google 转圈)
+  # 2. 阻断 UDP 443 (防 QUIC 转圈)
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
-  - GEOSITE,category-ads-all,🛑 AdBlock  # 大陆优化：加强广告阻断
+  # 增强去广告 (GEOSITE)
+  - GEOSITE,category-ads-all,🛑 AdBlock
 
-  # 3. Crypto 硬编码 (Binance/OKX 等)
+  # 3. Crypto 硬编码 (Binance/OKX 等几十个域名)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -438,7 +511,7 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 4. AI Services 硬编码 (含 oaiusercontent.com 修复，并添加bard)
+  # 4. AI Services 硬编码 (含 GPT 上传修复)
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,grok.x.com,🤖 AI Services
@@ -452,19 +525,19 @@ rules:
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
   - DOMAIN-SUFFIX,claude.ai,🤖 AI Services
   - DOMAIN-SUFFIX,gemini.google.com,🤖 AI Services
-  - DOMAIN-SUFFIX,bard.google.com,🤖 AI Services  # 优化：添加bard
+  - DOMAIN-SUFFIX,bard.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,grok.com,🤖 AI Services
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
 
-  # 5. GitHub 硬编码 (防误杀，排在 Microsoft 之前)
+  # 5. GitHub 硬编码 (防误杀)
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,github.io,🔰 Proxy Select
 
-  # 6. 大流量 GEOSITE
+  # 6. 常用大流量 (GEOSITE)
   - GEOSITE,google,🚀 Auto Speed
   - GEOSITE,youtube,📹 Streaming
   - GEOSITE,twitter,📲 Social Media
@@ -474,37 +547,37 @@ rules:
   - GEOSITE,facebook,📲 Social Media
   - GEOSITE,instagram,📲 Social Media
   
-  # 7. Telegram IP 直连 (防语音中断)
+  # 7. Telegram IP 直连
   - GEOIP,telegram,📲 Social Media
 
   # 8. Apple & Microsoft
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
 
-  # 9. 游戏下载优化 (Steam CN 直连)
+  # 9. 游戏下载 (Steam 省流)
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
 
-  # 10. 软件官网 (修复 qBittorrent 等)
+  # 10. 软件官网 (BT/下载站修复)
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 11. 国产/直连 (大陆优化：添加更多国内域名，如youku/iqiyi)
+  # 11. 国产/直连 (显式添加，防止 Fake-IP 绕路)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
+  - DOMAIN-SUFFIX,youku.com,DIRECT
+  - DOMAIN-SUFFIX,iqiyi.com,DIRECT
+  - DOMAIN-SUFFIX,douyu.com,DIRECT
+  - DOMAIN-SUFFIX,tencent.com,DIRECT
+  - DOMAIN-SUFFIX,netease.com,DIRECT
   - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
-  - DOMAIN-SUFFIX,youku.com,DIRECT  # 添加：优酷直连
-  - DOMAIN-SUFFIX,iqiyi.com,DIRECT  # 添加：爱奇艺直连
-  - DOMAIN-SUFFIX,douyu.com,DIRECT  # 添加：斗鱼直连
-  - DOMAIN-SUFFIX,tencent.com,DIRECT  # 添加：腾讯直连
-  - DOMAIN-SUFFIX,netease.com,DIRECT  # 添加：网易直连
   - GEOSITE,cn,DIRECT
   - RULE-SET,China,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
 
-  # 12. GFW
+  # 12. GFW 列表
   - GEOSITE,gfw,🔰 Proxy Select
 
   # 13. 兜底
@@ -517,7 +590,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_china_optimized.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_fusion.yaml"
       }
     });
   }
