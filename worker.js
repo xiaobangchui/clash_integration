@@ -1,22 +1,13 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终修正版 - 修复 GPT 上传)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终完整版 - GPT 上传修复 + 大陆优化 + 稳定运行)
  * 
- * 🚑 修复日志：
- * 1. [关键修复] 补全 OpenAI 缺失域名 (oaiusercontent.com 等)。
- *    - 解决：ChatGPT 无法上传文件、无法生成图片的问题。
- *    - 原理：强制这些域名走 AI 组 (美/日/台)，避开香港节点 (OpenAI 禁止香港上传)。
- * 
- * 2. [完整性检查] 
- *    - UDP 开启、并发关闭 (防断流)。
- *    - 币安/OKX 防封策略保留。
- *    - Google 秒开策略保留。
- * 
- * 中国大陆优化：
- * 1. DNS：添加更多国内DoH服务器（如阿里和腾讯），增强防污染；fallback优先Cloudflare以防墙干扰。
- * 2. 规则：添加更多国内常见域名直连（如bilibili、taobao等），减少泄露风险。
- * 3. 排除关键词：添加“机场”、“订阅”、“限时”等中国大陆常见垃圾节点词，净化节点列表。
- * 4. AI组：优先USA和JP节点，确保上传稳定；添加更多AI域名如bard.google.com。
- * 5. 性能：使用Promise.allSettled处理fetch，容错更强，避免单一失败阻塞。
+ * 整合两版优点：
+ * - worker.js：严格节点过滤、完整 DNS/AI 域名、Promise.allSettled 容错、fake-ip-filter 优化。
+ * - worker-1.js：详细注释、GitHub 防误杀顺序、Telegram IP 防语音中断强调。
+ * - 规则顺序：从局域网/阻断 → 特定服务 (Crypto/AI/GitHub) → 大流量 → 直连 → GFW → 兜底。
+ * - 域名顺序：高频/关键在前 (e.g., AI 包含 bard；国产添加 bilibili 等)。
+ * - 检索顺序：后端轮询 + allSettled 容错；节点过滤严格。
+ * - 中国大陆优化：添加更多直连域名 (youku/iqiyi 等)，加强广告阻断；DNS 防污染强。
  */
 
 const CONFIG = {
@@ -38,7 +29,7 @@ export default {
     const url = new URL(request.url);
     
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "GPT Upload Fixed" }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "ok", msg: "GPT Upload Fixed & Stable Complete" }), { headers: { "Content-Type": "application/json" } });
     }
 
     const AIRPORT_URLS = env.SUB_URLS ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
@@ -112,7 +103,7 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 修复 GPT 上传版 (大陆优化)`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 完整稳定版 (GPT 上传修复 + 大陆优化)`;
 
     const yaml = `
 ${trafficHeader}
@@ -418,16 +409,17 @@ rule-providers:
     interval: 86400
 
 rules:
-  # 1. 局域网/Direct
+  # 1. 局域网/Direct 优先 (防止内网卡顿)
   - GEOSITE,private,DIRECT
   - GEOIP,private,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
 
-  # 2. 阻断 UDP 443 (防 QUIC)
+  # 2. 阻断 UDP 443 (防 QUIC 导致 Google 转圈)
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
+  - GEOSITE,category-ads-all,🛑 AdBlock  # 大陆优化：加强广告阻断
 
-  # 3. Crypto 硬编码
+  # 3. Crypto 硬编码 (Binance/OKX 等)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -446,9 +438,10 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 4. AI Services 硬编码 (补全 oaiusercontent.com，并添加bard)
+  # 4. AI Services 硬编码 (含 oaiusercontent.com 修复，并添加bard)
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
+  - DOMAIN,grok.x.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
@@ -464,7 +457,7 @@ rules:
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
 
-  # 5. GitHub
+  # 5. GitHub 硬编码 (防误杀，排在 Microsoft 之前)
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
@@ -481,27 +474,32 @@ rules:
   - GEOSITE,facebook,📲 Social Media
   - GEOSITE,instagram,📲 Social Media
   
-  # 7. Telegram IP
+  # 7. Telegram IP 直连 (防语音中断)
   - GEOIP,telegram,📲 Social Media
 
   # 8. Apple & Microsoft
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
 
-  # 9. 游戏下载
+  # 9. 游戏下载优化 (Steam CN 直连)
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
 
-  # 10. 软件官网
+  # 10. 软件官网 (修复 qBittorrent 等)
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 11. 国产/直连 (优化：添加更多国内域名)
+  # 11. 国产/直连 (大陆优化：添加更多国内域名，如youku/iqiyi)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
   - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
+  - DOMAIN-SUFFIX,youku.com,DIRECT  # 添加：优酷直连
+  - DOMAIN-SUFFIX,iqiyi.com,DIRECT  # 添加：爱奇艺直连
+  - DOMAIN-SUFFIX,douyu.com,DIRECT  # 添加：斗鱼直连
+  - DOMAIN-SUFFIX,tencent.com,DIRECT  # 添加：腾讯直连
+  - DOMAIN-SUFFIX,netease.com,DIRECT  # 添加：网易直连
   - GEOSITE,cn,DIRECT
   - RULE-SET,China,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
@@ -519,7 +517,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_gpt_fix.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_china_optimized.yaml"
       }
     });
   }
