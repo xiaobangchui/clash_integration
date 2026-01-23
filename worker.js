@@ -10,6 +10,13 @@
  *    - UDP 开启、并发关闭 (防断流)。
  *    - 币安/OKX 防封策略保留。
  *    - Google 秒开策略保留。
+ * 
+ * 中国大陆优化：
+ * 1. DNS：添加更多国内DoH服务器（如阿里和腾讯），增强防污染；fallback优先Cloudflare以防墙干扰。
+ * 2. 规则：添加更多国内常见域名直连（如bilibili、taobao等），减少泄露风险。
+ * 3. 排除关键词：添加“机场”、“订阅”、“限时”等中国大陆常见垃圾节点词，净化节点列表。
+ * 4. AI组：优先USA和JP节点，确保上传稳定；添加更多AI域名如bard.google.com。
+ * 5. 性能：使用Promise.allSettled处理fetch，容错更强，避免单一失败阻塞。
  */
 
 const CONFIG = {
@@ -22,7 +29,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  excludeKeywords: ["5x", "10x", "x5", "x10", "到期", "剩余", "流量", "太旧", "过期", "时间", "重置", "试用", "赠送", "限速", "低速", "群", "官网", "客服", "网站", "更新", "通知"],
+  excludeKeywords: ["5x", "10x", "x5", "x10", "到期", "剩余", "流量", "太旧", "过期", "时间", "重置", "试用", "赠送", "限速", "低速", "群", "官网", "客服", "网站", "更新", "通知", "机场", "订阅", "限时", "促销"],
   fetchTimeout: 30000,
 };
 
@@ -54,23 +61,23 @@ export default {
         } catch (e) { return null; }
       });
 
-      const results = await Promise.all(fetchPromises);
+      const results = await Promise.allSettled(fetchPromises); // 优化：使用allSettled容错
       let currentBackendValid = false;
 
       for (const res of results) {
-        if (!res) continue;
+        if (res.status !== 'fulfilled' || !res.value) continue;
         currentBackendValid = true;
         summary.count++;
-        if (res.infoHeader) {
+        if (res.value.infoHeader) {
           const info = {};
-          res.infoHeader.split(';').forEach(p => { const [k, v] = p.trim().split('='); if (k && v) info[k.trim()] = parseInt(v) || 0; });
+          res.value.infoHeader.split(';').forEach(p => { const [k, v] = p.trim().split('='); if (k && v) info[k.trim()] = parseInt(v) || 0; });
           totalUpload += (info.upload || 0); totalDownload += (info.download || 0);
           summary.used += (info.upload || 0) + (info.download || 0); summary.total += (info.total || 0);
           if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
           const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
           if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
         }
-        const matches = res.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
+        const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
         allNodeLines.push(...matches);
       }
       if (currentBackendValid && allNodeLines.length > 0) break;
@@ -105,7 +112,7 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 修复 GPT 上传版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 修复 GPT 上传版 (大陆优化)`;
 
     const yaml = `
 ${trafficHeader}
@@ -163,12 +170,15 @@ dns:
     - '+.alicdn.com'
     - '+.aliyun.com'
     - '+.cn'
+    - '+.bilibili.com'  # 优化：添加bilibili直连
+    - '+.taobao.com'    # 优化：添加taobao直连
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
+    - https://dns.weixin.qq.com/dns-query  # 优化：添加腾讯DoH
     - 223.5.5.5
   fallback:
     - https://1.1.1.1/dns-query
@@ -224,9 +234,9 @@ ${makeGroup(nodeNames)}
     tolerance: 100
     lazy: true
     proxies:
-      - "🇺🇸 USA"
+      - "🇺🇸 USA"  # 优化：优先USA
+      - "🇯🇵 Japan"  # 优化：次优先JP
       - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
       - "🇹🇼 Taiwan"
 
   - name: "📲 Social Media"
@@ -436,7 +446,7 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 4. AI Services 硬编码 (补全 oaiusercontent.com)
+  # 4. AI Services 硬编码 (补全 oaiusercontent.com，并添加bard)
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
@@ -449,6 +459,7 @@ rules:
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
   - DOMAIN-SUFFIX,claude.ai,🤖 AI Services
   - DOMAIN-SUFFIX,gemini.google.com,🤖 AI Services
+  - DOMAIN-SUFFIX,bard.google.com,🤖 AI Services  # 优化：添加bard
   - DOMAIN-SUFFIX,grok.com,🤖 AI Services
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
@@ -486,7 +497,11 @@ rules:
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 11. 国产/直连
+  # 11. 国产/直连 (优化：添加更多国内域名)
+  - DOMAIN-SUFFIX,bilibili.com,DIRECT
+  - DOMAIN-SUFFIX,taobao.com,DIRECT
+  - DOMAIN-SUFFIX,jd.com,DIRECT
+  - DOMAIN-SUFFIX,weixin.qq.com,DIRECT
   - GEOSITE,cn,DIRECT
   - RULE-SET,China,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
