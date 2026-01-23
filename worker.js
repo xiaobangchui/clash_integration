@@ -490,7 +490,7 @@ rules:
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   # 增强去广告 (GEOSITE)
-  # - GEOSITE,category-ads-all,🛑 AdBlock
+  - GEOSITE,category-ads-all,🛑 AdBlock
 
   # 3. Crypto 硬编码 (Binance/OKX 等几十个域名)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
