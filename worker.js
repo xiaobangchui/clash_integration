@@ -245,6 +245,12 @@ dns:
     ipcidr:
       - 240.0.0.0/4
 
+  # 【新增】关键字段：解析代理节点域名的专用 DNS（用国内 DoH 最稳）
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+    - 223.5.5.5
+
 proxies:
 ${nodes.join("\n")}
 
