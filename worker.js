@@ -172,6 +172,8 @@ log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
 
+find-process-mode: strict   # 新增：进程名显示（strict 模式，性能更好）
+
 # === 性能优化 ===
 udp: true
 unified-delay: true
