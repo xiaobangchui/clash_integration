@@ -1,17 +1,14 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 终极·无懈可击·完美融合版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 终极·完整·无缺漏版)
  * 
- * 📝 版本校验：FINAL-FUSION-MAX
+ * 📝 版本校验：FINAL-COMPLETE-V2
  * 
- * 💎 融合两版优点，打造最强配置：
- * 1. [核心稳] 采用 Promise.allSettled 容错机制，后端挂几个都不怕。
- * 2. [网络稳] 关闭 TCP 并发，开启 UDP，混合 DNS (阿里/腾讯/Cloudflare)。
- * 3. [国内快] 显式直连 B站/淘宝/优酷等，配合丰富的 Fake-IP 过滤。
- * 4. [分流准] 
- *    - 💰 Crypto: 剔除香港 (防软封锁)，首选台湾。
- *    - 🤖 AI: 剔除香港 (防跳文档)，优选低延迟的日本/新加坡。
- *    - 🛑 去广告: 集成 GEOSITE 广告库，净化网络。
- * 5. [修复全] 包含 GPT上传修复、GitHub 直连修复、Grok/Bard 支持。
+ * 🔍 最终完整性检查：
+ * 1. [DNS 修复] 补回 proxy-server-nameserver，防止节点域名被污染导致无法连接。
+ * 2. [微软修复] 包含 OneDrive/Store 进程直连逻辑。
+ * 3. [网络基石] udp: true, tcp-concurrent: false (防断流)。
+ * 4. [规则完整] 包含 Crypto, AI, GitHub, Steam, BT, 国产直连等所有规则。
+ * 5. [运行机制] 使用 Promise.allSettled 容错，后端挂了也能跑。
  */
 
 const CONFIG = {
@@ -25,7 +22,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪 (过滤无效/到期/限速/广告节点)
+  // 强力去噪
   excludeKeywords: [
     "5x", "10x", "x5", "x10", 
     "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
@@ -42,7 +39,7 @@ export default {
     
     // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Fusion Stable Version" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "Final Complete Version" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
@@ -61,18 +58,10 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端 (使用 allSettled 容错)
-    const fetchPromises = AIRPORT_URLS.map(async (subUrl) => {
-      // 关键参数: udp=true, emoji=true
-      const convertUrl = `${CONFIG.backendUrls[Math.floor(Math.random() * CONFIG.backendUrls.length)]}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
-      // 这里稍微优化了一下：每次请求随机选一个后端，负载均衡
-      // 但为了保险，我们还是遍历所有后端比较稳妥，下面逻辑保持遍历
-      return null; 
-    });
-
-    // 重新编写遍历逻辑，确保高可用
+    // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
+            // 关键参数: udp=true, emoji=true
             const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
             try {
                 const resp = await fetch(convertUrl, {
@@ -87,7 +76,7 @@ export default {
             } catch (e) { return null; }
         });
 
-        // 使用 allSettled 即使部分失败也不影响整体
+        // 并发请求，容忍部分失败
         const results = await Promise.allSettled(batchPromises);
         let currentBackendValid = false;
 
@@ -95,6 +84,7 @@ export default {
             if (res.status === 'fulfilled' && res.value) {
                 currentBackendValid = true;
                 summary.count++;
+                
                 if (res.value.infoHeader) {
                     const info = {};
                     res.value.infoHeader.split(';').forEach(p => {
@@ -109,11 +99,13 @@ export default {
                     const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
                     if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
+                
                 const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
-        // 只要当前后端成功解析出节点，就停止尝试其他后端，节省资源
+        
+        // 如果当前后端成功拿到数据，就不再尝试下一个，节省时间
         if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
@@ -160,7 +152,7 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 终极融合版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 最终完整无缺漏版`;
 
     // 5. 生成 YAML
     const yaml = `
@@ -172,12 +164,13 @@ log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
 
-find-process-mode: strict   # 新增：进程名显示（strict 模式，性能更好）
+# 开启进程匹配 (Process Rule 生效)
+find-process-mode: strict
 
 # === 性能优化 ===
 udp: true
 unified-delay: true
-tcp-concurrent: false # 关闭并发，稳如老狗
+tcp-concurrent: false # 关闭并发，防断流
 
 geodata-mode: true
 geox-url:
@@ -185,6 +178,7 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
+# === TUN 模式 ===
 tun:
   enable: true
   stack: system
@@ -192,6 +186,7 @@ tun:
   auto-detect-interface: true
   dns-hijack:
     - any:53
+  strict-route: true
 
 sniffer:
   enable: true
@@ -205,6 +200,7 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
+# === DNS 设置 ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -212,7 +208,7 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
-  # 扩展 Fake-IP 过滤 (防 DNS 污染)
+  # Fake-IP 过滤 (防污染)
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -227,27 +223,34 @@ dns:
     - '+.bilibili.com'
     - '+.taobao.com'
     - '+.jd.com'
+    # 微软服务防止 FakeIP 引起连接重置
+    - '+.microsoft.com'
+    - '+.windowsupdate.com'
 
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
+  
   # 混合 DNS (阿里DoH + 腾讯DoH + UDP 兜底)
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://dns.weixin.qq.com/dns-query
     - https://doh.pub/dns-query
     - 223.5.5.5
+  
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
     - 8.8.8.8
+  
   fallback-filter:
     geoip: true
     geoip-code: CN
     ipcidr:
       - 240.0.0.0/4
 
-  # 【新增】关键字段：解析代理节点域名的专用 DNS（用国内 DoH 最稳）
+  # 【关键补回】节点域名解析专用 DNS
+  # 作用：确保节点本身的域名能被正确解析，不被污染，避免节点 Timeout
   proxy-server-nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
@@ -293,7 +296,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 4. AI Services (防封: 剔除香港，优选低延迟日本/新加坡)
+  # 4. AI Services (防封: 剔除香港，优选日本/新加坡)
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -389,7 +392,7 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
-  # === 手动选择 (默认 Auto Speed) ===
+  # === 手动选择 ===
   - name: "🔰 Proxy Select"
     type: select
     proxies:
@@ -497,10 +500,26 @@ rules:
   # 2. 阻断 UDP 443 (防 QUIC 转圈)
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
-  # 增强去广告 (GEOSITE)
   - GEOSITE,category-ads-all,🛑 AdBlock
 
-  # 3. Crypto 硬编码 (Binance/OKX 等几十个域名)
+  # ===================================================
+  # 3. 微软/OneDrive/商店 专用修正策略
+  # ===================================================
+  # 客户端进程 -> 直连
+  - PROCESS-NAME,OneDrive.exe,DIRECT
+  - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
+  - PROCESS-NAME,WinStore.App.exe,DIRECT
+  - PROCESS-NAME,Store.exe,DIRECT
+  # 更新/推送 -> 直连
+  - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
+  - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
+  # 网页版 -> 代理
+  - DOMAIN-SUFFIX,onedrive.live.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
+  # ===================================================
+
+  # 4. Crypto 硬编码
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -519,7 +538,7 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 4. AI Services 硬编码 (含 GPT 上传修复)
+  # 5. AI Services 硬编码 (含 GPT 上传修复)
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,grok.x.com,🤖 AI Services
@@ -538,14 +557,14 @@ rules:
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
 
-  # 5. GitHub 硬编码 (防误杀)
+  # 6. GitHub 硬编码 (防误杀)
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,github.io,🔰 Proxy Select
 
-  # 6. 常用大流量 (GEOSITE)
+  # 7. 常用大流量 GEOSITE
   - GEOSITE,google,🚀 Auto Speed
   - GEOSITE,youtube,📹 Streaming
   - GEOSITE,twitter,📲 Social Media
@@ -555,36 +574,23 @@ rules:
   - GEOSITE,facebook,📲 Social Media
   - GEOSITE,instagram,📲 Social Media
   
-  # 7. Telegram IP 直连
+  # 8. Telegram IP 直连
   - GEOIP,telegram,📲 Social Media
 
-  # 8. Apple & Microsoft
+  # 9. Apple & Microsoft (通用)
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
-  # 强制微软服务直连（解决 Store / OneDrive 连不上）
-  - DOMAIN-SUFFIX,store.microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,msftncsi.com,DIRECT
-  - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
-  - DOMAIN-SUFFIX,windowsupdate.microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,download.microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,onedrive.live.com,DIRECT
-  - DOMAIN-SUFFIX,login.live.com,DIRECT
-  - DOMAIN-SUFFIX,account.microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,aka.ms,DIRECT
-  - PROCESS-NAME,WinStore.App.exe,DIRECT     # Store 进程
-  - PROCESS-NAME,OneDrive.exe,DIRECT         # OneDrive 桌面客户端
-  - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
 
-  # 9. 游戏下载 (Steam 省流)
+  # 10. 游戏下载优化
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
 
-  # 10. 软件官网 (BT/下载站修复)
+  # 11. 软件官网
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 11. 国产/直连 (显式添加，防止 Fake-IP 绕路)
+  # 12. 国产/直连 (扩展列表)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
@@ -598,10 +604,10 @@ rules:
   - RULE-SET,China,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
 
-  # 12. GFW 列表
+  # 13. GFW 列表
   - GEOSITE,gfw,🔰 Proxy Select
 
-  # 13. 兜底
+  # 14. 兜底
   - MATCH,🐟 Final Select
 `;
 
@@ -611,7 +617,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_fusion.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_full_complete.yaml"
       }
     });
   }
