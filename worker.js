@@ -1,18 +1,19 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 终极·完整·无缺漏版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终·无缺漏·誓不修改版)
  * 
- * 📝 版本校验：FINAL-COMPLETE-V2
+ * 📝 版本校验：FINAL-V3-COMPLETE
  * 
- * 🔍 最终完整性检查：
- * 1. [DNS 修复] 补回 proxy-server-nameserver，防止节点域名被污染导致无法连接。
- * 2. [微软修复] 包含 OneDrive/Store 进程直连逻辑。
- * 3. [网络基石] udp: true, tcp-concurrent: false (防断流)。
- * 4. [规则完整] 包含 Crypto, AI, GitHub, Steam, BT, 国产直连等所有规则。
- * 5. [运行机制] 使用 Promise.allSettled 容错，后端挂了也能跑。
+ * 🛡️ 核心功能全检 (Checklist):
+ * 1. [网络层] udp: true, tcp-concurrent: false, ipv6: false.
+ * 2. [DNS层] 混合 DNS, 且包含 proxy-server-nameserver (解析节点域名).
+ * 3. [微软修复] 
+ *    - 网页/API (graph/login/onedrive.live) -> 走代理 (🔰 Proxy Select).
+ *    - 客户端/更新 (Store/Update/tlu.dl...) -> 走直连 (DIRECT).
+ * 4. [其他修复] 包含 Crypto防封、AI防封、GitHub防误杀、Steam省流、BT官网修复.
+ * 5. [部署] 支持 GitHub Actions 动态注入 SUB_URLS.
  */
 
 const CONFIG = {
-  // 后端转换服务 (高可用轮询)
   backendUrls: [
     "https://api.wcc.best/sub",
     "https://subconverter.speedupvpn.com/sub",
@@ -22,14 +23,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪
-  excludeKeywords: [
-    "5x", "10x", "x5", "x10", 
-    "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
-    "试用", "赠送", "限速", "低速", 
-    "群", "官网", "客服", "网站", "更新", "通知", 
-    "机场", "订阅", "限时", "促销"
-  ],
+  excludeKeywords: ["5x", "10x", "x5", "x10", "到期", "剩余", "流量", "太旧", "过期", "时间", "重置", "试用", "赠送", "限速", "低速", "群", "官网", "客服", "网站", "更新", "通知", "机场", "订阅", "限时", "促销"],
   fetchTimeout: 30000,
 };
 
@@ -37,14 +31,14 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 0. 健康检查
+    // 健康检查
     if (url.pathname === "/health") {
       return new Response(JSON.stringify({ status: "ok", msg: "Final Complete Version" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 1. 获取订阅
+    // 获取订阅
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
@@ -58,10 +52,9 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端 (使用 allSettled 容错机制)
+    // 遍历后端 (使用 allSettled 容错)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 关键参数: udp=true, emoji=true
             const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
             try {
                 const resp = await fetch(convertUrl, {
@@ -76,7 +69,6 @@ export default {
             } catch (e) { return null; }
         });
 
-        // 并发请求，容忍部分失败
         const results = await Promise.allSettled(batchPromises);
         let currentBackendValid = false;
 
@@ -84,7 +76,6 @@ export default {
             if (res.status === 'fulfilled' && res.value) {
                 currentBackendValid = true;
                 summary.count++;
-                
                 if (res.value.infoHeader) {
                     const info = {};
                     res.value.infoHeader.split(';').forEach(p => {
@@ -99,13 +90,10 @@ export default {
                     const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
                     if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
-                
                 const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
-        
-        // 如果当前后端成功拿到数据，就不再尝试下一个，节省时间
         if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
@@ -113,7 +101,7 @@ export default {
       return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 3. 节点处理
+    // 节点处理
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -139,7 +127,7 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 4. 分组逻辑
+    // 分组逻辑
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -152,7 +140,7 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 最终完整无缺漏版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 终极完整版`;
 
     // 5. 生成 YAML
     const yaml = `
@@ -164,13 +152,13 @@ log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
 
-# 开启进程匹配 (Process Rule 生效)
+# 开启进程匹配
 find-process-mode: strict
 
 # === 性能优化 ===
 udp: true
 unified-delay: true
-tcp-concurrent: false # 关闭并发，防断流
+tcp-concurrent: false
 
 geodata-mode: true
 geox-url:
@@ -178,7 +166,7 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
-# === TUN 模式 ===
+# === TUN ===
 tun:
   enable: true
   stack: system
@@ -200,7 +188,7 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
-# === DNS 设置 ===
+# === DNS ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -208,7 +196,6 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
-  # Fake-IP 过滤 (防污染)
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -223,34 +210,28 @@ dns:
     - '+.bilibili.com'
     - '+.taobao.com'
     - '+.jd.com'
-    # 微软服务防止 FakeIP 引起连接重置
     - '+.microsoft.com'
     - '+.windowsupdate.com'
 
   default-nameserver:
     - 223.5.5.5
     - 119.29.29.29
-  
-  # 混合 DNS (阿里DoH + 腾讯DoH + UDP 兜底)
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://dns.weixin.qq.com/dns-query
     - https://doh.pub/dns-query
     - 223.5.5.5
-  
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
     - 8.8.8.8
-  
   fallback-filter:
     geoip: true
     geoip-code: CN
     ipcidr:
       - 240.0.0.0/4
 
-  # 【关键补回】节点域名解析专用 DNS
-  # 作用：确保节点本身的域名能被正确解析，不被污染，避免节点 Timeout
+  # 确保节点域名解析正常 (补回的代码)
   proxy-server-nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
@@ -284,7 +265,7 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  # 3. Crypto Services (防封: 剔除香港，优选台湾)
+  # 3. Crypto Services
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -296,7 +277,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 4. AI Services (防封: 剔除香港，优选日本/新加坡)
+  # 4. AI Services
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -492,39 +473,37 @@ rule-providers:
     interval: 86400
 
 rules:
-  # 1. 局域网/Direct 优先 (内网直连)
+  # 1. 局域网/Direct 优先
   - GEOSITE,private,DIRECT
   - GEOIP,private,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
 
-  # 2. 阻断 UDP 443 (防 QUIC 转圈)
+  # 2. 阻断 UDP 443
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
 
   # ===================================================
-  # [插入] 微软/OneDrive 修复策略 (优先级必须高于 GEOSITE)
+  # 3. 微软/OneDrive/商店 专用修正策略 (完整版)
   # ===================================================
-  # 1. 修复"无法加载设置" (API/网页验证 -> 必须走代理)
+  # [A] 必须走代理的 (Web/API/Auth)
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
   - DOMAIN,login.live.com,🔰 Proxy Select
-  
-  # 2. OneDrive 网页版 (被墙 -> 必须走代理)
   - DOMAIN-SUFFIX,onedrive.live.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
-  
-  # 3. 客户端/商店/更新 (大流量 -> 强制直连)
+
+  # [B] 必须直连的 (客户端/更新/商店/大流量)
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
   - PROCESS-NAME,Store.exe,DIRECT
   - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
-  - DOMAIN-SUFFIX,assets.msn.com,DIRECT
   - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT  # ✅ 已补回
+  - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,assets.msn.com,DIRECT
   # ===================================================
 
   # 4. Crypto 硬编码
@@ -546,7 +525,7 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 5. AI Services 硬编码 (含 GPT 上传修复)
+  # 5. AI Services 硬编码
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,grok.x.com,🤖 AI Services
@@ -565,7 +544,7 @@ rules:
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
 
-  # 6. GitHub 硬编码 (防误杀)
+  # 6. GitHub 硬编码
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
@@ -585,11 +564,11 @@ rules:
   # 8. Telegram IP 直连
   - GEOIP,telegram,📲 Social Media
 
-  # 9. Apple & Microsoft (通用)
+  # 9. Apple & Microsoft 通用
   - GEOSITE,apple,🍎 Apple Services
-  - GEOSITE,microsoft,DIRECT
+  - GEOSITE,microsoft,DIRECT  # 兜底规则
 
-  # 10. 游戏下载优化
+  # 10. 游戏下载
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
 
@@ -598,7 +577,7 @@ rules:
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 12. 国产/直连 (扩展列表)
+  # 12. 国产/直连
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
@@ -625,7 +604,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_full_complete.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_complete.yaml"
       }
     });
   }
