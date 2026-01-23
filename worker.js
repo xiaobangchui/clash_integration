@@ -503,20 +503,28 @@ rules:
   - GEOSITE,category-ads-all,🛑 AdBlock
 
   # ===================================================
-  # 3. 微软/OneDrive/商店 专用修正策略
+  # [插入] 微软/OneDrive 修复策略 (优先级必须高于 GEOSITE)
   # ===================================================
-  # 客户端进程 -> 直连
+  # 1. 修复"无法加载设置" (API/网页验证 -> 必须走代理)
+  - DOMAIN,graph.microsoft.com,🔰 Proxy Select
+  - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
+  - DOMAIN,login.live.com,🔰 Proxy Select
+  
+  # 2. OneDrive 网页版 (被墙 -> 必须走代理)
+  - DOMAIN-SUFFIX,onedrive.live.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
+  - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
+  
+  # 3. 客户端/商店/更新 (大流量 -> 强制直连)
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
   - PROCESS-NAME,Store.exe,DIRECT
-  # 更新/推送 -> 直连
   - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
+  - DOMAIN-SUFFIX,assets.msn.com,DIRECT
   - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
-  - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
-  # 网页版 -> 代理
-  - DOMAIN-SUFFIX,onedrive.live.com,🔰 Proxy Select
-  - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT  # ✅ 已补回
   # ===================================================
 
   # 4. Crypto 硬编码
