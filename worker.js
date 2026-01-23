@@ -561,6 +561,19 @@ rules:
   # 8. Apple & Microsoft
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
+  # 强制微软服务直连（解决 Store / OneDrive 连不上）
+  - DOMAIN-SUFFIX,store.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,msftncsi.com,DIRECT
+  - DOMAIN-SUFFIX,windowsupdate.com,DIRECT
+  - DOMAIN-SUFFIX,windowsupdate.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,download.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,onedrive.live.com,DIRECT
+  - DOMAIN-SUFFIX,login.live.com,DIRECT
+  - DOMAIN-SUFFIX,account.microsoft.com,DIRECT
+  - DOMAIN-SUFFIX,aka.ms,DIRECT
+  - PROCESS-NAME,WinStore.App.exe,DIRECT     # Store 进程
+  - PROCESS-NAME,OneDrive.exe,DIRECT         # OneDrive 桌面客户端
+  - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
 
   # 9. 游戏下载 (Steam 省流)
   - GEOSITE,steam@cn,DIRECT
