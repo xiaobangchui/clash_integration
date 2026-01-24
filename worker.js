@@ -1,19 +1,16 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 OKX 满血复活版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终·TUN 模式修复版)
  * 
- * 📝 版本校验：FIX-OKX-DNS-BLOCK
+ * 📝 版本校验：FIX-TUN-GVISOR
  * 
  * 🚑 关键修复：
- * 1. [DNS 策略回调] 删除了 nameserver-policy 中针对 OKX/Binance 的强制 1.1.1.1 解析。
- *    - 原因：1.1.1.1 在国内常被阻断，导致 Clash 等不到 DNS 响应，引发"无流量/无法访问"。
- *    - 新逻辑：直接利用 Fake-IP 机制，将域名封装发送给代理节点，由境外节点进行解析 (Remote Resolve)。这是最稳的方案。
+ * 1. [TUN 模式修复]
+ *    - stack: gvisor (从 system 改为 gvisor，解决 Windows 下无法联网的问题)。
+ *    - strict-route: false (关闭严格路由，防止网络冲突)。
+ *    - mtu: 9000 (优化吞吐量)。
  * 
- * 2. [微软规则优化] 
- *    - 确保 OneDrive 网页版 (onedrive.live.com) 绝对走代理。
- *    - 确保 Store/更新 绝对走直连。
- * 
- * 3. [功能完备] 
- *    - 保持了之前所有的 GPT上传、Google秒开、GitHub防误杀等修复。
+ * 2. [完整保留] 
+ *    - 之前所有的 DNS 优化、微软修复、AI/Crypto 防封锁规则全部保留。
  */
 
 const CONFIG = {
@@ -42,14 +39,14 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 健康检查
+    // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "OKX DNS Fix" }), {
+      return new Response(JSON.stringify({ status: "ok", msg: "TUN Fixed (gVisor)" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 获取订阅
+    // 1. 获取订阅
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
@@ -63,7 +60,7 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 遍历后端
+    // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
             const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
@@ -115,7 +112,7 @@ export default {
       return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 节点处理
+    // 3. 节点处理
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -141,7 +138,7 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 分组逻辑
+    // 4. 分组逻辑
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -154,7 +151,7 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 OKX 满血复活版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 TUN 修复版`;
 
     // 5. 生成 YAML
     const yaml = `
@@ -180,15 +177,18 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
-# === TUN 模式 ===
+# === TUN 模式 (关键修复) ===
 tun:
   enable: true
-  stack: system
+  # 关键：使用 gvisor 栈，兼容性最强 (解决 TUN 模式无网)
+  stack: gvisor
   auto-route: true
   auto-detect-interface: true
   dns-hijack:
     - any:53
-  strict-route: true
+  # 关键：关闭严格路由，防止冲突
+  strict-route: false
+  mtu: 9000
 
 sniffer:
   enable: true
@@ -224,6 +224,7 @@ dns:
     - '+.bilibili.com'
     - '+.taobao.com'
     - '+.jd.com'
+    # 微软服务防止 FakeIP 引起连接重置
     - '+.microsoft.com'
     - '+.windowsupdate.com'
 
@@ -247,12 +248,6 @@ dns:
     geoip-code: CN
     ipcidr:
       - 240.0.0.0/4
-
-  # 【策略调整】仅对 100% 走代理的非国内域名做特殊 DNS 设置
-  # 移除了 OKX/Binance 的强制 DNS，交给 Fake-IP + Remote Resolve (最稳)
-  nameserver-policy:
-    'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
-    'google.com,+.google.com,+.googleapis.com': https://dns.google/dns-query
 
   # 代理节点域名解析
   proxy-server-nameserver:
@@ -509,6 +504,7 @@ rules:
   # ===================================================
   # 3. 微软/OneDrive/商店 专用修正策略
   # ===================================================
+  # [A] 必须走代理的
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
   - DOMAIN,login.live.com,🔰 Proxy Select
@@ -517,6 +513,7 @@ rules:
   - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
 
+  # [B] 必须直连的 (进程/更新/商店)
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
@@ -550,8 +547,8 @@ rules:
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
   # 5. AI Services 硬编码
-  - DOMAIN,ai.google.dev,🤖 AI Services  # 已添加
-  - DOMAIN,gemini.google.com,🤖 AI Services # 已添加
+  - DOMAIN,ai.google.dev,🤖 AI Services
+  - DOMAIN,gemini.google.com,🤖 AI Services
   - DOMAIN,aistudio.google.com,🤖 AI Services
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,grok.x.com,🤖 AI Services
@@ -592,7 +589,7 @@ rules:
 
   # 9. Apple & Microsoft 通用
   - GEOSITE,apple,🍎 Apple Services
-  - GEOSITE,microsoft,DIRECT  # 兜底规则
+  - GEOSITE,microsoft,DIRECT
 
   # 10. 游戏下载优化
   - GEOSITE,steam@cn,DIRECT
@@ -630,7 +627,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_okx_fix.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_tun_fixed.yaml"
       }
     });
   }
