@@ -360,6 +360,7 @@ rules:
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okcdn.com,💰 Crypto Services
   - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
   - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
