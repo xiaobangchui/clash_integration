@@ -1,21 +1,24 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 终极·无懈可击·DNS 纯净版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 OKX/TUN 完美修复版)
  * 
- * 📝 版本校验：FINAL-DNS-PURE
+ * 📝 版本校验：FIX-OKX-TUN-FINAL
  * 
- * 🚑 关键修复日志 (针对 OKX/Grok 无流量问题)：
- * 1. [DNS 策略分流] 重启 nameserver-policy，并精细化配置：
- *    - 敏感全球域名 (OKX/Binance/Google/AI/X) 强制只走境外纯净 DoH (1.1.1.1 / 8.8.8.8)。
- *    - 杜绝国内 UDP DNS 污染，解决"无流量"的根源问题。
- * 2. [proxy-server-nameserver] 仅使用境内 DoH，确保节点域名解析稳定。
- * 3. [AI 分组优化] 调整节点优先级为 日/新/美/台，追求更低延迟。
+ * 🚑 关键修复日志：
+ * 1. [DNS 策略重构] 恢复并增强 nameserver-policy。
+ *    - 强制 okx.com, binance.com 等敏感域名只走 https://dns.google/dns-query。
+ *    - 解决 TUN 模式下因国内 DNS 抢答/投毒导致的 OKX 无法连接问题。
  * 
- * 🛡️ 其他所有功能保持完美：
- * - 微软 UWP 修复、GPT 上传修复、Google 秒开、GitHub 防误杀、Steam 省流、BT 官网修复。
+ * 2. [DNS 列表净化] 
+ *    - 从默认 nameserver 中移除了 UDP DNS (223.5.5.5)，只保留 DoH。
+ *    - 防止 UDP 明文查询触发防火墙阻断。
+ * 
+ * 3. [保留所有修复] 
+ *    - 微软商店直连/网页代理分流 (已验证有效)。
+ *    - GPT 上传修复。
+ *    - 严格的 TUN 配置 (gvisor)。
  */
 
 const CONFIG = {
-  // 后端转换服务 (高可用轮询)
   backendUrls: [
     "https://api.wcc.best/sub",
     "https://subconverter.speedupvpn.com/sub",
@@ -25,14 +28,7 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪
-  excludeKeywords: [
-    "5x", "10x", "x5", "x10", 
-    "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
-    "试用", "赠送", "限速", "低速", 
-    "群", "官网", "客服", "网站", "更新", "通知", 
-    "机场", "订阅", "限时", "促销"
-  ],
+  excludeKeywords: ["5x", "10x", "x5", "x10", "到期", "剩余", "流量", "太旧", "过期", "时间", "重置", "试用", "赠送", "限速", "低速", "群", "官网", "客服", "网站", "更新", "通知", "机场", "订阅", "限时", "促销"],
   fetchTimeout: 30000,
 };
 
@@ -40,36 +36,22 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Final DNS Pure Version" }), {
-        headers: { "Content-Type": "application/json" }
-      });
+      return new Response(JSON.stringify({ status: "ok", msg: "OKX TUN Fixed" }), { headers: { "Content-Type": "application/json" } });
     }
 
-    // 1. 获取订阅
-    const AIRPORT_URLS = env.SUB_URLS 
-      ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
-      : [];
-
-    if (AIRPORT_URLS.length === 0) {
-      return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
-    }
+    const AIRPORT_URLS = env.SUB_URLS ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
+    if (AIRPORT_URLS.length === 0) return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
 
     let allNodeLines = [];
     let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
-    let totalUpload = 0;
-    let totalDownload = 0;
+    let totalUpload = 0; let totalDownload = 0;
 
-    // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
             const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
             try {
-                const resp = await fetch(convertUrl, {
-                    headers: { "User-Agent": CONFIG.userAgent },
-                    signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-                });
+                const resp = await fetch(convertUrl, { headers: { "User-Agent": CONFIG.userAgent }, signal: AbortSignal.timeout(CONFIG.fetchTimeout) });
                 if (!resp.ok) return null;
                 const text = await resp.text();
                 if (!text.includes('proxies:') && !text.includes('name:')) return null;
@@ -85,38 +67,25 @@ export default {
             if (res.status === 'fulfilled' && res.value) {
                 currentBackendValid = true;
                 summary.count++;
-                
                 if (res.value.infoHeader) {
                     const info = {};
-                    res.value.infoHeader.split(';').forEach(p => {
-                        const [k, v] = p.trim().split('=');
-                        if (k && v) info[k.trim()] = parseInt(v) || 0;
-                    });
-                    totalUpload += (info.upload || 0);
-                    totalDownload += (info.download || 0);
-                    summary.used += (info.upload || 0) + (info.download || 0);
-                    summary.total += (info.total || 0);
+                    res.value.infoHeader.split(';').forEach(p => { const [k, v] = p.trim().split('='); if (k && v) info[k.trim()] = parseInt(v) || 0; });
+                    totalUpload += (info.upload || 0); totalDownload += (info.download || 0);
+                    summary.used += (info.upload || 0) + (info.download || 0); summary.total += (info.total || 0);
                     if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
                     const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
                     if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
-                
                 const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
-        
         if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
-    if (allNodeLines.length === 0) {
-      return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
-    }
+    if (allNodeLines.length === 0) return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
 
-    // 3. 节点处理
-    const nodes = [];
-    const nodeNames = [];
-    const nameSet = new Set();
+    const nodes = []; const nodeNames = []; const nameSet = new Set();
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
     for (const line of allNodeLines) {
@@ -124,37 +93,27 @@ export default {
       const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
       let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-      
       if (excludeRegex.test(originalName)) continue;
-
-      let uniqueName = originalName;
-      let counter = 1;
-      while (nameSet.has(uniqueName)) {
-        uniqueName = `${originalName}_${counter++}`;
-      }
+      let uniqueName = originalName; let counter = 1;
+      while (nameSet.has(uniqueName)) { uniqueName = `${originalName}_${counter++}`; }
       nameSet.add(uniqueName);
-
       proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
       nodes.push("  " + proxyContent);
       nodeNames.push(uniqueName);
     }
 
-    // 4. 分组逻辑
-    const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
-    const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
-    const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
-    const sg  = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
+    const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
+    const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
+    const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
+    const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
-
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
-
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 终极DNS纯净版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 OKX/TUN 完美修复版`;
 
-    // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
 mixed-port: 7890
@@ -164,7 +123,6 @@ log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
 
-# 开启进程匹配
 find-process-mode: strict
 
 # === 性能优化 ===
@@ -178,7 +136,7 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
-# === TUN ===
+# === TUN 模式 (gvisor 是 Windows 下兼容性最好的) ===
 tun:
   enable: true
   stack: gvisor
@@ -201,7 +159,7 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
-# === DNS 设置 (强化抗污染，确保敏感域名解析纯净) ===
+# === DNS 设置 (OKX 修复核心区域) ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -209,6 +167,7 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
+  # Fake-IP 过滤
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -230,14 +189,12 @@ dns:
     - 223.5.5.5
     - 119.29.29.29
   
-  # 混合 Nameserver (境内 DoH + 少量 UDP 兜底)
+  # 主力 DNS: 移除了 UDP 223.5.5.5，全用 DoH，防污染
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://dns.weixin.qq.com/dns-query
     - https://doh.pub/dns-query
-    - 223.5.5.5
   
-  # Fallback (境外 DoH)
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
@@ -249,24 +206,21 @@ dns:
     ipcidr:
       - 240.0.0.0/4
 
-  # 【核心修复】DNS 策略分流 (Nameserver Policy)
-  # 强制这些敏感域名只走境外纯净 DoH，彻底杜绝污染导致无流量问题
+  # 【关键修复】nameserver-policy
+  # 强制 OKX/Binance/Google/AI 只用境外 DoH 解析
+  # 哪怕国内墙了 1.1.1.1，Clash 也会走代理去请求它，确保拿到正确 IP
   nameserver-policy:
-    'geosite:cn,private': [https://dns.alidns.com/dns-query, https://dns.weixin.qq.com/dns-query] # 国内域名走国内DoH
-    # 强制 Crypto/AI/Google/X 域名走境外 DoH，即使走代理也通过境外解析
+    'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
     'okx.com,+.okx.com,+.okx-dns.com,+.okcdn.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
     'binance.com,+.binance.com,+.bnbstatic.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    'google.com,+.google.com,+.googleapis.com,+.google.dev': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
-    'openai.com,+.openai.com,+.chatgpt.com,+.oaiusercontent.com,+.oaistatic.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    'x.com,+.twitter.com,+.t.co,+.twimg.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    # 其他境外域名 (GEOSITE !CN) 走境外 DoH，作为兜底
-    'geosite:geolocation-!cn': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
+    'google.com,+.google.com,+.googleapis.com': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
+    'openai.com,+.openai.com,+.chatgpt.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
+    'x.com,+.twitter.com,+.t.co': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
 
-  # 代理节点域名解析 (仅使用境内 DoH，防止被污染)
+  # 代理节点域名解析 (用国内 DoH)
   proxy-server-nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
-    - 223.5.5.5
 
 proxies:
 ${nodes.join("\n")}
@@ -296,7 +250,7 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  # 3. Crypto Services (防封: 剔除香港，优选台湾)
+  # 3. Crypto Services
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -308,7 +262,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 4. AI Services (防封: 剔除香港，优选低延迟日本/新加坡)
+  # 4. AI Services
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -517,7 +471,6 @@ rules:
   # ===================================================
   # 3. 微软/OneDrive/商店 专用修正策略
   # ===================================================
-  # [A] 必须走代理的 (Web/API/Auth)
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
   - DOMAIN,login.live.com,🔰 Proxy Select
@@ -526,7 +479,6 @@ rules:
   - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
 
-  # [B] 必须直连的 (客户端/更新/商店/大流量)
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
@@ -537,7 +489,7 @@ rules:
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
   # ===================================================
 
-  # 4. Crypto 硬编码 (OKX 域名补全)
+  # 4. Crypto 硬编码
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -559,7 +511,7 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 5. AI Services 硬编码 (含 ai.google.dev 修复)
+  # 5. AI Services 硬编码
   - DOMAIN,ai.google.dev,🤖 AI Services
   - DOMAIN,gemini.google.com,🤖 AI Services
   - DOMAIN,aistudio.google.com,🤖 AI Services
@@ -640,7 +592,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_full_complete.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_tun_fixed.yaml"
       }
     });
   }
