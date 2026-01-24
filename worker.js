@@ -1,21 +1,15 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 OKX/TUN 完美修复版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 最终·TUN 满血复活修正版)
  * 
- * 📝 版本校验：FIX-OKX-TUN-FINAL
+ * 📝 版本校验：FIX-TUN-FAKEIP-FINAL
  * 
- * 🚑 关键修复日志：
- * 1. [DNS 策略重构] 恢复并增强 nameserver-policy。
- *    - 强制 okx.com, binance.com 等敏感域名只走 https://dns.google/dns-query。
- *    - 解决 TUN 模式下因国内 DNS 抢答/投毒导致的 OKX 无法连接问题。
+ * 🚑 核心修复 (解决 OKX 在 TUN 下不通)：
+ * 1. [DNS 策略回滚] 删除了 nameserver-policy 中针对 OKX/Binance/Google 的强制解析。
+ *    - 原因：强制解析会导致 Clash 在本地等待 DNS 响应。如果 DNS 被墙，连接直接超时。
+ *    - 效果：恢复 Fake-IP 的"秒回"机制。Clash 不再在本地解析这些域名，而是直接交给代理节点远程解析。这是 TUN 模式下最稳的方案。
  * 
- * 2. [DNS 列表净化] 
- *    - 从默认 nameserver 中移除了 UDP DNS (223.5.5.5)，只保留 DoH。
- *    - 防止 UDP 明文查询触发防火墙阻断。
- * 
- * 3. [保留所有修复] 
- *    - 微软商店直连/网页代理分流 (已验证有效)。
- *    - GPT 上传修复。
- *    - 严格的 TUN 配置 (gvisor)。
+ * 2. [TUN 兼容性] 保持 gvisor 模式，兼容性最好。
+ * 3. [其他] 保持所有分流规则不变。
  */
 
 const CONFIG = {
@@ -37,11 +31,11 @@ export default {
     const url = new URL(request.url);
     
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "OKX TUN Fixed" }), { headers: { "Content-Type": "application/json" } });
+      return new Response(JSON.stringify({ status: "ok", msg: "TUN FakeIP Fixed" }), { headers: { "Content-Type": "application/json" } });
     }
 
     const AIRPORT_URLS = env.SUB_URLS ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean) : [];
-    if (AIRPORT_URLS.length === 0) return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
+    if (AIRPORT_URLS.length === 0) return new Response("配置错误：未找到 SUB_URLS 环境变量。", { status: 500 });
 
     let allNodeLines = [];
     let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
@@ -83,7 +77,7 @@ export default {
         if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
-    if (allNodeLines.length === 0) return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
+    if (allNodeLines.length === 0) return new Response("错误：无法获取节点。", { status: 500 });
 
     const nodes = []; const nodeNames = []; const nameSet = new Set();
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
@@ -112,7 +106,7 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 OKX/TUN 完美修复版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 TUN 修复完善版`;
 
     const yaml = `
 ${trafficHeader}
@@ -136,7 +130,7 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
-# === TUN 模式 (gvisor 是 Windows 下兼容性最好的) ===
+# === TUN 模式 ===
 tun:
   enable: true
   stack: gvisor
@@ -159,7 +153,7 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
-# === DNS 设置 (OKX 修复核心区域) ===
+# === DNS 设置 ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -167,7 +161,6 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
-  # Fake-IP 过滤
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -189,12 +182,14 @@ dns:
     - 223.5.5.5
     - 119.29.29.29
   
-  # 主力 DNS: 移除了 UDP 223.5.5.5，全用 DoH，防污染
+  # 主 DNS：使用国内 DoH，确保国内访问速度
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://dns.weixin.qq.com/dns-query
     - https://doh.pub/dns-query
+    - 223.5.5.5
   
+  # Fallback：国外 DoH
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
@@ -206,21 +201,17 @@ dns:
     ipcidr:
       - 240.0.0.0/4
 
-  # 【关键修复】nameserver-policy
-  # 强制 OKX/Binance/Google/AI 只用境外 DoH 解析
-  # 哪怕国内墙了 1.1.1.1，Clash 也会走代理去请求它，确保拿到正确 IP
+  # 【策略简化】只保留国内域名的分流
+  # 删除 OKX/Google 的强制策略，完全依赖 Fake-IP 机制
+  # 这样 Clash 收到请求会直接返回 Fake-IP，不再本地等待 DNS，彻底解决无流量问题
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
-    'okx.com,+.okx.com,+.okx-dns.com,+.okcdn.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    'binance.com,+.binance.com,+.bnbstatic.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    'google.com,+.google.com,+.googleapis.com': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
-    'openai.com,+.openai.com,+.chatgpt.com': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
-    'x.com,+.twitter.com,+.t.co': [https://1.1.1.1/dns-query, https://dns.google/dns-query]
 
-  # 代理节点域名解析 (用国内 DoH)
+  # 代理节点域名解析
   proxy-server-nameserver:
     - https://dns.alidns.com/dns-query
     - https://doh.pub/dns-query
+    - 223.5.5.5
 
 proxies:
 ${nodes.join("\n")}
@@ -554,7 +545,7 @@ rules:
 
   # 9. Apple & Microsoft 通用
   - GEOSITE,apple,🍎 Apple Services
-  - GEOSITE,microsoft,DIRECT
+  - GEOSITE,microsoft,DIRECT  # 兜底规则
 
   # 10. 游戏下载优化
   - GEOSITE,steam@cn,DIRECT
@@ -592,7 +583,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_config_tun_fixed.yaml"
+        "Content-Disposition": "attachment; filename=clash_config_tun_fix.yaml"
       }
     });
   }
