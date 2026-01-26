@@ -1,111 +1,161 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血无损版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血版)
+ * 
+ * 📝 版本校验：DUAL-OS-FINAL-MAX
+ * 
+ * 🍎 Mac (macOS) 用户：请开启 TUN 模式，体验丝滑全局代理。
+ * 🪟 Windows 用户：建议使用系统代理 (System Proxy)，如需尝试 TUN，此配置也做了最大兼容。
+ * 
+ * 🛡️ 核心功能回顾：
+ * 1. [双模兼容] 内置 TUN 配置 (gvisor 栈)，同时适配系统代理模式。
+ * 2. [DNS 纯净] 移除导致断流的强制 DNS 策略，回归 Fake-IP + 远程解析 (最稳)。
+ * 3. [微软修复] OneDrive 网页走代理，客户端走直连。
+ * 4. [防封锁] 币安/OKX/AI 物理隔离，防软封锁。
+ * 5. [网络层] UDP 开启，并发关闭，防止阻断。
  */
 
 const CONFIG = {
+  // 后端转换服务 (高可用轮询)
   backendUrls: [
-    "https://api.v1.mk/sub",          // 对 Hy2 支持最稳的后端
     "https://api.wcc.best/sub",
+    "https://subconverter.speedupvpn.com/sub",
     "https://sub.yorun.me/sub",
+    "https://api.dler.io/sub",
+    "https://subconv.is-sb.com/sub",
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  excludeKeywords: ["5x"],            // 仅过滤 5x
+  // 强力去噪
+  excludeKeywords: [
+    "5x", "10x", "x5", "x10", 
+    "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
+    "试用", "赠送", "限速", "低速", 
+    "群", "官网", "客服", "网站", "更新", "通知", 
+    "机场", "订阅", "限时", "促销"
+  ],
   fetchTimeout: 30000,
 };
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
-    if (url.pathname === "/health") return new Response("ok");
+    
+    // 0. 健康检查
+    if (url.pathname === "/health") {
+      return new Response(JSON.stringify({ status: "ok", msg: "Dual OS Ready" }), {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
 
-    const SUB_STR = env.SUB_URLS || "";
-    const AIRPORT_URLS = SUB_STR.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+    // 1. 获取订阅
+    const AIRPORT_URLS = env.SUB_URLS 
+      ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
+      : [];
 
-    let allProxyBlocks = [];
-    let summary = { used: 0, total: 0, expire: 0 };
-    let totalUpload = 0, totalDownload = 0;
+    if (AIRPORT_URLS.length === 0) {
+      return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
+    }
 
-    // 1. 获取并转换节点
-    if (AIRPORT_URLS.length > 0) {
-      for (const backend of CONFIG.backendUrls) {
+    let allNodeLines = [];
+    let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
+    let totalUpload = 0;
+    let totalDownload = 0;
+
+    // 2. 遍历后端 (使用 allSettled 容错机制)
+    for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-          // target=mihomo 确保后端输出 Hysteria 2 格式
-          const convertUrl = `${backend}?target=mihomo&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false&fdn=true`;
-          try {
-            const resp = await fetch(convertUrl, {
-              headers: { "User-Agent": CONFIG.userAgent },
-              signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-            });
-            if (!resp.ok) return null;
-            const text = await resp.text();
-            if (!text.includes('name:')) return null;
-            const infoHeader = resp.headers.get("Subscription-Userinfo");
-            return { text, infoHeader };
-          } catch (e) { return null; }
+            // 关键参数: udp=true, emoji=true
+            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+            try {
+                const resp = await fetch(convertUrl, {
+                    headers: { "User-Agent": CONFIG.userAgent },
+                    signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+                });
+                if (!resp.ok) return null;
+                const text = await resp.text();
+                if (!text.includes('proxies:') && !text.includes('name:')) return null;
+                const infoHeader = resp.headers.get("Subscription-Userinfo");
+                return { text, infoHeader };
+            } catch (e) { return null; }
         });
 
         const results = await Promise.allSettled(batchPromises);
-        let successInBackend = false;
+        let currentBackendValid = false;
+
         for (const res of results) {
-          if (res.status === 'fulfilled' && res.value) {
-            successInBackend = true;
-            if (res.value.infoHeader) {
-              const info = {};
-              res.value.infoHeader.split(';').forEach(p => {
-                const [k, v] = p.trim().split('=');
-                if (k && v) info[k.trim()] = parseInt(v) || 0;
-              });
-              totalUpload += (info.upload || 0); totalDownload += (info.download || 0);
-              summary.total += (info.total || 0);
-              if (info.expire) summary.expire = info.expire;
+            if (res.status === 'fulfilled' && res.value) {
+                currentBackendValid = true;
+                summary.count++;
+                
+                if (res.value.infoHeader) {
+                    const info = {};
+                    res.value.infoHeader.split(';').forEach(p => {
+                        const [k, v] = p.trim().split('=');
+                        if (k && v) info[k.trim()] = parseInt(v) || 0;
+                    });
+                    totalUpload += (info.upload || 0);
+                    totalDownload += (info.download || 0);
+                    summary.used += (info.upload || 0) + (info.download || 0);
+                    summary.total += (info.total || 0);
+                    if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
+                    const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
+                    if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
+                }
+                
+                const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
+                allNodeLines.push(...matches);
             }
-            // === 核心提取：物理分割，确保多行 Hy2 完整 ===
-            const parts = res.value.text.split(/\n\s*-\s+/);
-            for (let i = 1; i < parts.length; i++) {
-              let p = parts[i].trimEnd();
-              if (p.includes('name:')) allProxyBlocks.push("- " + p);
-            }
-          }
         }
-        if (successInBackend && allProxyBlocks.length > 0) break;
-      }
+        
+        if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
-    // 2. 节点清洗 (仅过滤 5x)
+    if (allNodeLines.length === 0) {
+      return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
+    }
+
+    // 3. 节点处理
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
-    for (const block of allProxyBlocks) {
-      const nameMatch = block.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+    for (const line of allNodeLines) {
+      let proxyContent = line.trim();
+      const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
-      let name = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-      if (excludeRegex.test(name) || name.includes("过滤掉")) continue;
+      let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+      
+      if (excludeRegex.test(originalName)) continue;
 
-      let uniqueName = name;
+      let uniqueName = originalName;
       let counter = 1;
-      while (nameSet.has(uniqueName)) { uniqueName = `${name}_${counter++}`; }
+      while (nameSet.has(uniqueName)) {
+        uniqueName = `${originalName}_${counter++}`;
+      }
       nameSet.add(uniqueName);
 
-      const cleanedBlock = block.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
-      nodes.push("  " + cleanedBlock);
+      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      nodes.push("  " + proxyContent);
       nodeNames.push(uniqueName);
     }
 
-    // 3. 准备地区分组数据
-    const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
-    const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
-    const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
-    const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
+    // 4. 分组逻辑
+    const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
+    const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
+    const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
+    const sg  = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
+
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
 
-    // 4. 生成 YAML (1:1 还原原始代码所有配置，绝无删减)
-    const trafficHeader = `# 📊 流量: ${((totalUpload+totalDownload)/(1024**3)).toFixed(1)}GB / ${(summary.total/(1024**3)).toFixed(1)}GB | 🏆 Hy2 修复版`;
+    const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
+    const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
+    const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 双端通用满血版`;
 
+    // 5. 生成 YAML
     const yaml = `
 ${trafficHeader}
 mixed-port: 7890
@@ -114,7 +164,11 @@ mode: Rule
 log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
+
+# 开启进程匹配
 find-process-mode: strict
+
+# === 性能优化 ===
 udp: true
 unified-delay: true
 tcp-concurrent: false
@@ -125,12 +179,16 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
+# === TUN 模式 (Mac 完美适配，Windows 兼容) ===
 tun:
   enable: true
   stack: gvisor
   auto-route: true
   auto-detect-interface: true
-  dns-hijack: ["any:53"]
+  dns-hijack:
+    - any:53
+  # Mac 下建议开启，Windows 下如果冲突可关闭。这里设为 true 兼容 Mac 最佳体验。
+  # 如果 Windows 下 TUN 有问题，软件内切换到"系统代理"即可，不影响使用。
   strict-route: true
   mtu: 9000
 
@@ -139,16 +197,22 @@ sniffer:
   parse-pure-ip: true
   override-destination: true
   sniff:
-    TLS: {ports: [443, 8443]}
-    HTTP: {ports: [80, 8080-8880]}
-    QUIC: {ports: [443, 8443]}
+    TLS: 
+      ports: [443, 8443]
+    HTTP: 
+      ports: [80, 8080-8880]
+    QUIC: 
+      ports: [443, 8443]
 
+# === DNS 设置 (Fake-IP 纯净模式) ===
 dns:
   enable: true
   listen: 0.0.0.0:53
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
+  
+  # Fake-IP 过滤 (防止回环解析错误)
   fake-ip-filter:
     - '*.lan'
     - '*.local'
@@ -165,28 +229,45 @@ dns:
     - '+.jd.com'
     - '+.microsoft.com'
     - '+.windowsupdate.com'
-  default-nameserver: [223.5.5.5, 119.29.29.29]
+
+  default-nameserver:
+    - 223.5.5.5
+    - 119.29.29.29
+  
+  # 核心 DNS: 使用国内 DoH，稳定且防普通污染
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://dns.weixin.qq.com/dns-query
     - https://doh.pub/dns-query
     - 223.5.5.5
+  
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
     - 8.8.8.8
+  
   fallback-filter:
     geoip: true
     geoip-code: CN
-    ipcidr: [240.0.0.0/4]
+    ipcidr:
+      - 240.0.0.0/4
+
+  # 策略分流：仅保留国内域名走国内解析
+  # 国外敏感域名(OKX/Google)全部走 Fake-IP 自动代理，不进行本地 DNS 解析，彻底杜绝污染
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
-  proxy-server-nameserver: [https://dns.alidns.com/dns-query, https://doh.pub/dns-query, 223.5.5.5]
+
+  # 代理节点域名解析
+  proxy-server-nameserver:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+    - 223.5.5.5
 
 proxies:
-${nodes.length > 0 ? nodes.join("\n") : "  - {name: \"⚠️ 抓取失败\", type: ss, server: 127.0.0.1, port: 80, cipher: aes-128-gcm, password: \"pw\"}"}
+${nodes.join("\n")}
 
 proxy-groups:
+  # 1. 全局自动测速
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -196,45 +277,78 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
+  # 2. 故障转移
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
     interval: 300
     lazy: true
-    proxies: ["🇭🇰 Hong Kong", "🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA", "🚀 Auto Speed"]
+    proxies:
+      - "🇭🇰 Hong Kong"
+      - "🇹🇼 Taiwan"
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
+      - "🚀 Auto Speed"
 
+  # 3. Crypto Services (防封: 剔除香港，优选台湾)
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
     interval: 600
     tolerance: 100
     lazy: true
-    proxies: ["🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore"]
+    proxies:
+      - "🇹🇼 Taiwan"
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
 
+  # 4. AI Services (防封: 剔除香港，优选日本/新加坡)
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
     interval: 600
     tolerance: 100
     lazy: true
-    proxies: ["🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA", "🇹🇼 Taiwan"]
+    proxies:
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
+      - "🇹🇼 Taiwan"
 
+  # 5. Social Media
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
     interval: 600
     tolerance: 100
     lazy: true
-    proxies: ["🚀 Auto Speed", "🔰 Proxy Select", "🇭🇰 Hong Kong", "🇸🇬 Singapore", "🇯🇵 Japan", "🇺🇸 USA", "🇹🇼 Taiwan"]
+    proxies:
+      - "🚀 Auto Speed"
+      - "🔰 Proxy Select"
+      - "🇭🇰 Hong Kong"
+      - "🇸🇬 Singapore"
+      - "🇯🇵 Japan"
+      - "🇺🇸 USA"
+      - "🇹🇼 Taiwan"
 
+  # 6. Streaming
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
     interval: 600
     tolerance: 100
     lazy: true
-    proxies: ["🚀 Auto Speed", "🔰 Proxy Select", "🇭🇰 Hong Kong", "🇸🇬 Singapore", "🇯🇵 Japan", "🇺🇸 USA", "🇹🇼 Taiwan"]
+    proxies:
+      - "🚀 Auto Speed"
+      - "🔰 Proxy Select"
+      - "🇭🇰 Hong Kong"
+      - "🇸🇬 Singapore"
+      - "🇯🇵 Japan"
+      - "🇺🇸 USA"
+      - "🇹🇼 Taiwan"
 
+  # === 地区分组 ===
   - name: "🇭🇰 Hong Kong"
     type: url-test
     url: https://www.google.com/generate_204
@@ -285,21 +399,47 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
+  # === 手动选择 ===
   - name: "🔰 Proxy Select"
     type: select
-    proxies: ["🚀 Auto Speed", "🇭🇰 Hong Kong", "📉 Auto Fallback", "💰 Crypto Services", "🤖 AI Services", "🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA", "🌍 Others", DIRECT]
+    proxies:
+      - "🚀 Auto Speed"
+      - "🇭🇰 Hong Kong"
+      - "📉 Auto Fallback"
+      - "💰 Crypto Services"
+      - "🤖 AI Services"
+      - "🇹🇼 Taiwan"
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
+      - "🌍 Others"
+      - DIRECT
 
   - name: "🛑 AdBlock"
     type: select
-    proxies: [REJECT, DIRECT]
+    proxies:
+      - REJECT
+      - DIRECT
 
   - name: "🍎 Apple Services"
     type: select
-    proxies: [DIRECT, "🇺🇸 USA", "🚀 Auto Speed"]
+    proxies:
+      - DIRECT
+      - "🇺🇸 USA"
+      - "🚀 Auto Speed"
 
   - name: "🐟 Final Select"
     type: select
-    proxies: ["🔰 Proxy Select", "🚀 Auto Speed", "📉 Auto Fallback", DIRECT, "🇭🇰 Hong Kong", "🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA"]
+    proxies:
+      - "🔰 Proxy Select"
+      - "🚀 Auto Speed"
+      - "📉 Auto Fallback"
+      - DIRECT
+      - "🇭🇰 Hong Kong"
+      - "🇹🇼 Taiwan"
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
 
 rule-providers:
   Reject:
@@ -308,42 +448,49 @@ rule-providers:
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/reject.txt"
     path: ./ruleset/reject.txt
     interval: 86400
+
   China:
     type: http
     behavior: classical
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/direct.txt"
     path: ./ruleset/direct.txt
     interval: 86400
+
   Private:
     type: http
     behavior: classical
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/private.txt"
     path: ./ruleset/private.txt
     interval: 86400
+
   Proxy:
     type: http
     behavior: classical
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/proxy.txt"
     path: ./ruleset/proxy.txt
     interval: 86400
+
   Apple:
     type: http
     behavior: classical
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/apple.txt"
     path: ./ruleset/apple.txt
     interval: 86400
+
   Google:
     type: http
     behavior: classical
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google.txt"
     path: ./ruleset/google.txt
     interval: 86400
+
   GoogleCN:
     type: http
     behavior: classical
     url: "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release/google-cn.txt"
     path: ./ruleset/google-cn.txt
     interval: 86400
+
   TelegramCIDR:
     type: http
     behavior: ipcidr
@@ -352,14 +499,20 @@ rule-providers:
     interval: 86400
 
 rules:
+  # 1. 局域网/Direct 优先
   - GEOSITE,private,DIRECT
   - GEOIP,private,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
+
+  # 2. 阻断 UDP 443 (防 QUIC)
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
 
+  # ===================================================
   # 3. 微软/OneDrive/商店 专用修正策略
+  # ===================================================
+  # [A] 必须走代理的 (Web/API/Auth)
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
   - DOMAIN,login.live.com,🔰 Proxy Select
@@ -367,6 +520,8 @@ rules:
   - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
+
+  # [B] 必须直连的 (客户端/更新/商店/大流量)
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
@@ -375,6 +530,7 @@ rules:
   - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
+  # ===================================================
 
   # 4. Crypto 硬编码
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
@@ -384,8 +540,8 @@ rules:
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okcdn.com,💰 Crypto Services
+  -	DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
   - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
   - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
@@ -436,13 +592,19 @@ rules:
   - GEOSITE,disney,📹 Streaming
   - GEOSITE,facebook,📲 Social Media
   - GEOSITE,instagram,📲 Social Media
+  
+  # 8. Telegram IP 直连
   - GEOIP,telegram,📲 Social Media
 
   # 9. Apple & Microsoft 通用
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
+
+  # 10. 游戏下载优化
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
+
+  # 11. 软件官网
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
@@ -460,15 +622,21 @@ rules:
   - GEOSITE,cn,DIRECT
   - RULE-SET,China,DIRECT
   - GEOIP,CN,DIRECT,no-resolve
+
+  # 13. GFW 列表
   - GEOSITE,gfw,🔰 Proxy Select
+
+  # 14. 兜底
   - MATCH,🐟 Final Select
 `;
+
+    const userinfo = `upload=${Math.round(totalUpload)};download=${Math.round(totalDownload)};total=${summary.total};expire=${summary.expire === Infinity ? 0 : summary.expire}`;
 
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
-        "Subscription-Userinfo": `upload=${totalUpload};download=${totalDownload};total=${summary.total};expire=${summary.expire}`,
-        "Content-Disposition": "attachment; filename=clash_config_full.yaml"
+        "Subscription-Userinfo": userinfo,
+        "Content-Disposition": "attachment; filename=clash_config_dual_os.yaml"
       }
     });
   }
