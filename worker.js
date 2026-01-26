@@ -110,30 +110,20 @@ export default {
       return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 3. 节点处理
+    // 3. 节点处理 (不改名、不重命名、不筛选)
     const nodes = [];
     const nodeNames = [];
-    const nameSet = new Set();
-    const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
     for (const line of allNodeLines) {
-      let proxyContent = line.trim();
+      const proxyContent = line.trim();
+      // 仅提取名字用于后续的分组匹配
       const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
-      let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
       
-      if (excludeRegex.test(originalName)) continue;
-
-      let uniqueName = originalName;
-      let counter = 1;
-      while (nameSet.has(uniqueName)) {
-        uniqueName = `${originalName}_${counter++}`;
-      }
-      nameSet.add(uniqueName);
-
-      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
-      nodes.push("  " + proxyContent);
-      nodeNames.push(uniqueName);
+      const nodeName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+      
+      nodes.push("  " + proxyContent); // 直接放入原始行，不进行任何 replace 操作
+      nodeNames.push(nodeName);        // 收集名字用于分组
     }
 
     // 4. 分组逻辑
