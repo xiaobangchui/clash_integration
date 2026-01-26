@@ -3,18 +3,15 @@
  */
 
 const CONFIG = {
-  // 后端转换服务 (保持高可用轮询)
   backendUrls: [
-    "https://api.v1.mk/sub",          // 优先使用对 Hy2 支持最好的后端
+    "https://api.v1.mk/sub",          // 对 Hy2 支持最好
     "https://api.wcc.best/sub",
     "https://sub.yorun.me/sub",
-    "https://api.dler.io/sub",
     "https://subconv.is-sb.com/sub",
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // === 按照要求：只过滤 5x ===
-  excludeKeywords: ["5x"],
+  excludeKeywords: ["5x"],            // 仅过滤 5x
   fetchTimeout: 30000,
 };
 
@@ -27,60 +24,52 @@ export default {
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
 
-    if (AIRPORT_URLS.length === 0) return new Response("配置错误：未找到 SUB_URLS", { status: 500 });
-
     let allNodeLines = [];
-    let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
-    let totalUpload = 0;
-    let totalDownload = 0;
+    let summary = { used: 0, total: 0, expire: 0 };
+    let totalUpload = 0, totalDownload = 0;
 
-    // 1. 获取订阅并处理 Hysteria 兼容性
-    for (const backend of CONFIG.backendUrls) {
+    if (AIRPORT_URLS.length > 0) {
+      for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 关键：expand=false 禁用后端过滤，scv=true 跳过证书校验，确保 Hy2 节点出现
-            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false&fdn=true`;
-            try {
-                const resp = await fetch(convertUrl, {
-                    headers: { "User-Agent": CONFIG.userAgent },
-                    signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-                });
-                if (!resp.ok) return null;
-                const text = await resp.text();
-                if (!text.includes('name:')) return null;
-                const infoHeader = resp.headers.get("Subscription-Userinfo");
-                return { text, infoHeader };
-            } catch (e) { return null; }
+          const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false&fdn=true`;
+          try {
+            const resp = await fetch(convertUrl, {
+              headers: { "User-Agent": CONFIG.userAgent },
+              signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+            });
+            if (!resp.ok) return null;
+            const text = await resp.text();
+            if (!text.includes('name:')) return null;
+            const infoHeader = resp.headers.get("Subscription-Userinfo");
+            return { text, infoHeader };
+          } catch (e) { return null; }
         });
 
         const results = await Promise.allSettled(batchPromises);
         let currentBackendValid = false;
 
         for (const res of results) {
-            if (res.status === 'fulfilled' && res.value) {
-                currentBackendValid = true;
-                summary.count++;
-                
-                if (res.value.infoHeader) {
-                    const info = {};
-                    res.value.infoHeader.split(';').forEach(p => {
-                        const [k, v] = p.trim().split('=');
-                        if (k && v) info[k.trim()] = parseInt(v) || 0;
-                    });
-                    totalUpload += (info.upload || 0);
-                    totalDownload += (info.download || 0);
-                    summary.total += (info.total || 0);
-                    if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
-                }
-                
-                // === 修复：使用跨行正则匹配完整的 Hysteria 节点块 ===
-                const matches = res.value.text.match(/^\s*-\s*\{[\s\S]*?\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
-                allNodeLines.push(...matches);
+          if (res.status === 'fulfilled' && res.value) {
+            currentBackendValid = true;
+            if (res.value.infoHeader) {
+              const info = {};
+              res.value.infoHeader.split(';').forEach(p => {
+                const [k, v] = p.trim().split('=');
+                if (k && v) info[k.trim()] = parseInt(v) || 0;
+              });
+              totalUpload += (info.upload || 0);
+              totalDownload += (info.download || 0);
+              summary.total += (info.total || 0);
+              if (info.expire) summary.expire = info.expire;
             }
+            // 跨行匹配 Hy2 节点
+            const matches = res.value.text.match(/^\s*-\s*\{[\s\S]*?\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
+            allNodeLines.push(...matches);
+          }
         }
         if (currentBackendValid && allNodeLines.length > 0) break;
+      }
     }
-
-    if (allNodeLines.length === 0) return new Response("错误：未能获取节点", { status: 500 });
 
     const nodes = [];
     const nodeNames = [];
@@ -88,42 +77,44 @@ export default {
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
     for (const line of allNodeLines) {
-      let proxyContent = line.trim();
-      const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+      let content = line.trim();
+      const nameMatch = content.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
-      let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-      
-      // === 仅执行 5x 过滤 ===
-      if (excludeRegex.test(originalName)) continue;
+      let name = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+      if (excludeRegex.test(name)) continue;
 
-      let uniqueName = originalName;
+      let uniqueName = name;
       let counter = 1;
-      while (nameSet.has(uniqueName)) { uniqueName = `${originalName}_${counter++}`; }
+      while (nameSet.has(uniqueName)) { uniqueName = `${name}_${counter++}`; }
       nameSet.add(uniqueName);
 
-      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
-      nodes.push("  " + proxyContent);
+      content = content.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      nodes.push("  " + content);
       nodeNames.push(uniqueName);
     }
 
-    // 分组
-    const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
-    const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
-    const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
-    const sg  = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
+    // 如果没节点，生成一个占位节点，防止 Clash 报 Invalid YAML
+    if (nodes.length === 0) {
+      nodes.push('  - name: "⚠️ 未获取到节点，请检查链接或环境变量"');
+      nodes.push('    type: ss');
+      nodes.push('    server: 127.0.0.1');
+      nodes.push('    port: 8888');
+      nodes.push('    cipher: aes-128-gcm');
+      nodes.push('    password: "error"');
+      nodeNames.push("⚠️ 未获取到节点，请检查链接或环境变量");
+    }
+
+    const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
+    const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
+    const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
+    const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
+    const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
     const usa = nodeNames.filter(n => /(US|United|States|America|美|美国)/i.test(n));
     const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
 
-    const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
-
-    const usedGB = ((totalUpload + totalDownload) / (1024 ** 3)).toFixed(1);
-    const totalGB = (summary.total / (1024 ** 3)).toFixed(1);
-    const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / ${totalGB}GB | 到期: ${expireDate} | 🏆 Hy2 修复满血版`;
-
-    // 5. 生成 YAML (完整保留你原始文件中的所有配置和规则)
+    // 下面开始 1:1 还原你所有的原始规则
     const yaml = `
-${trafficHeader}
+# 📊 流量: ${((totalUpload+totalDownload)/(1024**3)).toFixed(1)}GB / ${(summary.total/(1024**3)).toFixed(1)}GB
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -146,8 +137,7 @@ tun:
   stack: gvisor
   auto-route: true
   auto-detect-interface: true
-  dns-hijack:
-    - any:53
+  dns-hijack: [any:53]
   strict-route: true
   mtu: 9000
 
@@ -156,12 +146,9 @@ sniffer:
   parse-pure-ip: true
   override-destination: true
   sniff:
-    TLS: 
-      ports: [443, 8443]
-    HTTP: 
-      ports: [80, 8080-8880]
-    QUIC: 
-      ports: [443, 8443]
+    TLS: {ports: [443, 8443]}
+    HTTP: {ports: [80, 8080-8880]}
+    QUIC: {ports: [443, 8443]}
 
 dns:
   enable: true
@@ -185,9 +172,7 @@ dns:
     - '+.jd.com'
     - '+.microsoft.com'
     - '+.windowsupdate.com'
-  default-nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
+  default-nameserver: [223.5.5.5, 119.29.29.29]
   nameserver:
     - https://dns.alidns.com/dns-query
     - https://dns.weixin.qq.com/dns-query
@@ -200,14 +185,10 @@ dns:
   fallback-filter:
     geoip: true
     geoip-code: CN
-    ipcidr:
-      - 240.0.0.0/4
+    ipcidr: [240.0.0.0/4]
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
-  proxy-server-nameserver:
-    - https://dns.alidns.com/dns-query
-    - https://doh.pub/dns-query
-    - 223.5.5.5
+  proxy-server-nameserver: [https://dns.alidns.com/dns-query, https://doh.pub/dns-query, 223.5.5.5]
 
 proxies:
 ${nodes.join("\n")}
@@ -227,13 +208,7 @@ ${makeGroup(nodeNames)}
     url: https://cp.cloudflare.com/generate_204
     interval: 300
     lazy: true
-    proxies:
-      - "🇭🇰 Hong Kong"
-      - "🇹🇼 Taiwan"
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🚀 Auto Speed"
+    proxies: ["🇭🇰 Hong Kong", "🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA", "🚀 Auto Speed"]
 
   - name: "💰 Crypto Services"
     type: url-test
@@ -241,10 +216,7 @@ ${makeGroup(nodeNames)}
     interval: 600
     tolerance: 100
     lazy: true
-    proxies:
-      - "🇹🇼 Taiwan"
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
+    proxies: ["🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore"]
 
   - name: "🤖 AI Services"
     type: url-test
@@ -252,11 +224,7 @@ ${makeGroup(nodeNames)}
     interval: 600
     tolerance: 100
     lazy: true
-    proxies:
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🇹🇼 Taiwan"
+    proxies: ["🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA", "🇹🇼 Taiwan"]
 
   - name: "📲 Social Media"
     type: url-test
@@ -264,14 +232,7 @@ ${makeGroup(nodeNames)}
     interval: 600
     tolerance: 100
     lazy: true
-    proxies:
-      - "🚀 Auto Speed"
-      - "🔰 Proxy Select"
-      - "🇭🇰 Hong Kong"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
-      - "🇺🇸 USA"
-      - "🇹🇼 Taiwan"
+    proxies: ["🚀 Auto Speed", "🔰 Proxy Select", "🇭🇰 Hong Kong", "🇸🇬 Singapore", "🇯🇵 Japan", "🇺🇸 USA", "🇹🇼 Taiwan"]
 
   - name: "📹 Streaming"
     type: url-test
@@ -279,14 +240,7 @@ ${makeGroup(nodeNames)}
     interval: 600
     tolerance: 100
     lazy: true
-    proxies:
-      - "🚀 Auto Speed"
-      - "🔰 Proxy Select"
-      - "🇭🇰 Hong Kong"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
-      - "🇺🇸 USA"
-      - "🇹🇼 Taiwan"
+    proxies: ["🚀 Auto Speed", "🔰 Proxy Select", "🇭🇰 Hong Kong", "🇸🇬 Singapore", "🇯🇵 Japan", "🇺🇸 USA", "🇹🇼 Taiwan"]
 
   - name: "🇭🇰 Hong Kong"
     type: url-test
@@ -340,39 +294,19 @@ ${makeGroup(others)}
 
   - name: "🔰 Proxy Select"
     type: select
-    proxies:
-      - "🚀 Auto Speed"
-      - "🇭🇰 Hong Kong"
-      - "📉 Auto Fallback"
-      - "💰 Crypto Services"
-      - "🤖 AI Services"
-      - "🇹🇼 Taiwan"
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🌍 Others"
-      - DIRECT
+    proxies: ["🚀 Auto Speed", "🇭🇰 Hong Kong", "📉 Auto Fallback", "💰 Crypto Services", "🤖 AI Services", "🇹🇼 Taiwan", "🇯🇵 Japan", "🇸🇬 Singapore", "🇺🇸 USA", "🌍 Others", DIRECT]
 
   - name: "🛑 AdBlock"
     type: select
-    proxies:
-      - REJECT
-      - DIRECT
+    proxies: [REJECT, DIRECT]
 
   - name: "🍎 Apple Services"
     type: select
-    proxies:
-      - DIRECT
-      - "🇺🇸 USA"
-      - "🚀 Auto Speed"
+    proxies: [DIRECT, "🇺🇸 USA", "🚀 Auto Speed"]
 
   - name: "🐟 Final Select"
     type: select
-    proxies:
-      - "🔰 Proxy Select"
-      - "🚀 Auto Speed"
-      - "📉 Auto Fallback"
-      - DIRECT
+    proxies: ["🔰 Proxy Select", "🚀 Auto Speed", "📉 Auto Fallback", DIRECT]
 
 rule-providers:
   Reject:
@@ -522,13 +456,11 @@ rules:
   - MATCH,🐟 Final Select
 `;
 
-    const userinfo = `upload=${Math.round(totalUpload)};download=${Math.round(totalDownload)};total=${summary.total};expire=${summary.expire === Infinity ? 0 : summary.expire}`;
-
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
-        "Subscription-Userinfo": userinfo,
-        "Content-Disposition": "attachment; filename=clash_full_hy2.yaml"
+        "Subscription-Userinfo": `upload=${totalUpload};download=${totalDownload};total=${summary.total};expire=${summary.expire}`,
+        "Content-Disposition": "attachment; filename=clash_config.yaml"
       }
     });
   }
