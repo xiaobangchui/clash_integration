@@ -57,83 +57,61 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端 (使用 allSettled 容错机制)
-    for (const backend of CONFIG.backendUrls) {
-        const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 关键参数: udp=true, emoji=true
-            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
-            try {
-                const resp = await fetch(convertUrl, {
-                    headers: { "User-Agent": CONFIG.userAgent },
-                    signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-                });
-                if (!resp.ok) return null;
-                const text = await resp.text();
-                if (!text.includes('proxies:') && !text.includes('name:')) return null;
-                const infoHeader = resp.headers.get("Subscription-Userinfo");
-                return { text, infoHeader };
-            } catch (e) { return null; }
-        });
+    // 2. 直接抓取订阅（跳过转换接口，防止过滤）
+    for (const subUrl of AIRPORT_URLS) {
+        try {
+          const resp = await fetch(subUrl, {
+            headers: { "User-Agent": "ClashMeta" }, // 模拟 ClashMeta 去抓取
+            signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+          });
+          if (!resp.ok) continue;
+          const text = await resp.text();
 
-        const results = await Promise.allSettled(batchPromises);
-        let currentBackendValid = false;
+          // 3. 暴力提取节点 (只要是 proxies: 下面的内容都拿走)
+          // 我们不再依赖后端，直接从你原有的 Clash 订阅里提取节点
+          const proxySection = text.split(/proxies:\s*\n/i)[1]?.split(/proxy-groups:|rules:|rule-providers:/i)[0];
+          
+          if (proxySection) {
+            // 将节点块按行切分
+            const rawNodes = proxySection.split('\n');
+            let currentNode = "";
 
-        for (const res of results) {
-            if (res.status === 'fulfilled' && res.value) {
-                currentBackendValid = true;
-                summary.count++;
-                
-                if (res.value.infoHeader) {
-                    const info = {};
-                    res.value.infoHeader.split(';').forEach(p => {
-                        const [k, v] = p.trim().split('=');
-                        if (k && v) info[k.trim()] = parseInt(v) || 0;
-                    });
-                    totalUpload += (info.upload || 0);
-                    totalDownload += (info.download || 0);
-                    summary.used += (info.upload || 0) + (info.download || 0);
-                    summary.total += (info.total || 0);
-                    if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
-                    const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
-                    if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
-                }
-                
-                const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
-                allNodeLines.push(...matches);
+            for (let line of rawNodes) {
+              const trimmed = line.trimEnd();
+              if (!trimmed || trimmed.startsWith('#')) continue;
+
+              // 只要是以 "-" 开头，就是新节点
+              if (trimmed.trimStart().startsWith('-')) {
+                if (currentNode) pushNode(currentNode);
+                currentNode = trimmed;
+              } else {
+                // 多行节点（如 HY2）的后续部分
+                if (currentNode) currentNode += "\n" + trimmed;
+              }
             }
+            if (currentNode) pushNode(currentNode);
+          }
+        } catch (e) {
+          console.log("抓取失败:", subUrl, e);
         }
-        
-        if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
-    if (allNodeLines.length === 0) {
-      return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
-    }
-
-    // 3. 节点处理
-    const nodes = [];
-    const nodeNames = [];
-    const nameSet = new Set();
-    const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
-
-    for (const line of allNodeLines) {
-      let proxyContent = line.trim();
-      const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
-      if (!nameMatch) continue;
-      let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-      
-      if (excludeRegex.test(originalName)) continue;
-
-      let uniqueName = originalName;
-      let counter = 1;
-      while (nameSet.has(uniqueName)) {
-        uniqueName = `${originalName}_${counter++}`;
+    function pushNode(raw) {
+      // 提取名字用于分组
+      const nMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+      if (nMatch) {
+        const name = (nMatch[1] || nMatch[2] || nameMatch[3]).trim();
+        nodes.push("  " + raw.trim());
+        nodeNames.push(name);
       }
-      nameSet.add(uniqueName);
+    }
+    
+    // 调试：在后台看抓到了什么
+    console.log("抓取到的节点总数:", nodes.length);
+    if (nodes.length > 0) console.log("第一个节点预览:", nodes[0]);
 
-      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
-      nodes.push("  " + proxyContent);
-      nodeNames.push(uniqueName);
+    if (nodes.length === 0) {
+      return new Response("错误：未能从订阅中提取到节点。请检查你的 SUB_URLS 是否为有效的 Clash 订阅链接。", { status: 500 });
     }
 
     // 4. 分组逻辑
