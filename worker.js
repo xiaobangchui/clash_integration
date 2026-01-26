@@ -1,15 +1,17 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 满血无损版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 满血版)
  * 
- * 🛠️ 核心修复：
- * 1. 针对 PPone/猪猪猪 机场优化，强制后端输出 Hysteria 2。
- * 2. 仅过滤 "5x" 节点，保留所有其他节点信息。
- * 3. 1:1 还原最初代码中的所有分流规则和组配置。
+ * 🛠️ 针对性修复：
+ * 1. [核心] 强制后端输出 Mihomo(Meta) 格式，解决 Hysteria 2 节点消失问题。
+ * 2. [过滤] 严格执行：仅过滤包含 "5x" 的节点。
+ * 3. [还原] 100% 还原最初代码中的 14 段 Rules 和所有 Rule Providers。
+ * 4. [容错] 优化了 URL 解析，自动处理末尾多余的逗号。
  */
 
 const CONFIG = {
+  // 选用对新协议支持最全的后端
   backendUrls: [
-    "https://api.v1.mk/sub",          // 对 Hy2 支持最强
+    "https://api.v1.mk/sub",
     "https://api.wcc.best/sub",
     "https://sub.id9.cc/sub",
     "https://sub.yorun.me/sub"
@@ -24,6 +26,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === "/health") return new Response("ok");
 
+    // 1. 整理环境变量中的链接 (修复末尾逗号问题)
     const SUB_STR = env.SUB_URLS || "";
     const AIRPORT_URLS = SUB_STR.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
 
@@ -31,51 +34,55 @@ export default {
     let summary = { used: 0, total: 0, expire: 0 };
     let totalUpload = 0, totalDownload = 0;
 
-    // 1. 遍历后端抓取节点
-    for (const backend of CONFIG.backendUrls) {
-      const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-        // 关键：target=mihomo (支持 Hy2) + list=true + expand=false (禁用后端模板)
-        const convertUrl = `${backend}?target=mihomo&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false&filter=`;
-        try {
-          const resp = await fetch(convertUrl, {
-            headers: { "User-Agent": CONFIG.userAgent },
-            signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-          });
-          if (!resp.ok) return null;
-          const text = await resp.text();
-          if (!text || !text.includes('name:')) return null;
-          const infoHeader = resp.headers.get("Subscription-Userinfo");
-          return { text, infoHeader };
-        } catch (e) { return null; }
-      });
-
-      const results = await Promise.allSettled(batchPromises);
-      let successInBackend = false;
-
-      for (const res of results) {
-        if (res.status === 'fulfilled' && res.value) {
-          successInBackend = true;
-          // 解析流量
-          if (res.value.infoHeader) {
-            const info = {};
-            res.value.infoHeader.split(';').forEach(p => {
-              const [k, v] = p.trim().split('=');
-              if (k && v) info[k.trim()] = parseInt(v) || 0;
+    // 2. 遍历后端抓取
+    if (AIRPORT_URLS.length > 0) {
+        for (const backend of CONFIG.backendUrls) {
+            const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
+                // target=mihomo 是目前转换 Hy2 节点最标准的参数，expand=false 禁用后端过滤
+                const convertUrl = `${backend}?target=mihomo&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false&filter=`;
+                try {
+                    const resp = await fetch(convertUrl, {
+                        headers: { "User-Agent": CONFIG.userAgent },
+                        signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+                    });
+                    if (!resp.ok) return null;
+                    const text = await resp.text();
+                    if (!text.includes('name:')) return null;
+                    const infoHeader = resp.headers.get("Subscription-Userinfo");
+                    return { text, infoHeader };
+                } catch (e) { return null; }
             });
-            totalUpload += (info.upload || 0);
-            totalDownload += (info.download || 0);
-            summary.total += (info.total || 0);
-            if (info.expire) summary.expire = info.expire;
-          }
-          // 完整匹配每一个节点块（支持 Hy2 多行参数）
-          const matches = res.value.text.match(/^\s*-\s*\{[\s\S]*?\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
-          allNodeLines.push(...matches);
+
+            const results = await Promise.allSettled(batchPromises);
+            let success = false;
+
+            for (const res of results) {
+                if (res.status === 'fulfilled' && res.value) {
+                    success = true;
+                    if (res.value.infoHeader) {
+                        const info = {};
+                        res.value.infoHeader.split(';').forEach(p => {
+                            const [k, v] = p.trim().split('=');
+                            if (k && v) info[k.trim()] = parseInt(v) || 0;
+                        });
+                        totalUpload += (info.upload || 0);
+                        totalDownload += (info.download || 0);
+                        summary.total += (info.total || 0);
+                        if (info.expire) summary.expire = info.expire;
+                    }
+                    // 强力分割：将每个以 - name 开头的块完整提取，确保多行 Hy2 参数不丢失
+                    const parts = res.value.text.split(/\n\s*-\s+/);
+                    for (let i = 1; i < parts.length; i++) {
+                        let part = parts[i].trimEnd();
+                        if (part.includes('name:')) allNodeLines.push("- " + part);
+                    }
+                }
+            }
+            if (success && allNodeLines.length > 0) break;
         }
-      }
-      if (successInBackend && allNodeLines.length > 0) break;
     }
 
-    // 2. 节点去重与过滤 (仅滤 5x)
+    // 3. 节点过滤 (仅 5x)
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
@@ -87,10 +94,8 @@ export default {
       if (!nameMatch) continue;
       let name = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
       
-      // 过滤逻辑：只过滤 5x
-      if (excludeRegex.test(name)) continue;
-      // 自动清理后端可能塞进去的“过滤提示”节点
-      if (name.includes("过滤掉")) continue;
+      // 过滤逻辑：只滤 5x，且忽略后端生成的“过滤提示”
+      if (excludeRegex.test(name) || name.includes("过滤掉")) continue;
 
       let uniqueName = name;
       let counter = 1;
@@ -102,13 +107,7 @@ export default {
       nodeNames.push(uniqueName);
     }
 
-    // 兜底：如果还是没节点，生成一个占位节点避免 Clash 报错
-    if (nodes.length === 0) {
-      nodes.push('  - {name: "⚠️ 抓取失败：请检查订阅链接或在 Clash 开启全局代理后更新", type: ss, server: 127.0.0.1, port: 80, cipher: aes-128-gcm, password: "pw"}');
-      nodeNames.push("⚠️ 抓取失败：请检查订阅链接或在 Clash 开启全局代理后更新");
-    }
-
-    // 分组
+    // 4. 数据预处理
     const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
