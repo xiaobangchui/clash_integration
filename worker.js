@@ -61,7 +61,7 @@ export default {
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
 			// 关键点：增加 &include_all=true 告诉后端不要过滤任何协议
-			const convertUrl = `${backend}?target=clash&ver=meta&include_all=true&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true`;
+			const convertUrl = `${backend}?target=clash&ver=meta&include_all=true&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
@@ -111,20 +111,25 @@ export default {
       return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 3. 节点处理 (不改名、不重命名、不筛选)
+    // 3. 节点处理 (真正的全节点原样透传)
     const nodes = [];
     const nodeNames = [];
 
-    for (const line of allNodeLines) {
-      const proxyContent = line.trim();
-      // 仅提取名字用于后续的分组匹配
-      const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+    // 这个正则的意思是：找到所有以 " - " 开头的段落，不管里面写了什么新奇协议，全部原样拿走
+    const matches = allNodeLines; 
+
+    for (const proxyContent of matches) {
+      const content = proxyContent.trim();
+      
+      // 这里的正则只是为了“读出”名字，好让分组（如自动测速）能认出它
+      const nameMatch = content.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
       
       const nodeName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
       
-      nodes.push("  " + proxyContent); // 直接放入原始行，不进行任何 replace 操作
-      nodeNames.push(nodeName);        // 收集名字用于分组
+      // 这里就是你要求的：原样放入，不改名，不改协议，不改过滤
+      nodes.push("  " + content); 
+      nodeNames.push(nodeName); 
     }
 
     // 4. 分组逻辑
