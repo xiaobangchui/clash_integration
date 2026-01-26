@@ -60,8 +60,8 @@ export default {
     // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 建议改为 target=clashmeta 明确告知后端你需要 Meta 协议支持
-			const convertUrl = `${backend}?target=mihomo&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+			// 使用 target=clash & ver=meta 是目前兼容性最强的 Meta 协议请求方式
+			const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
@@ -98,7 +98,8 @@ export default {
                     if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
                 
-                const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
+                // 这种写法能更灵活地捕获以 "-" 开头的 YAML 节点配置
+				const matches = res.value.text.match(/^\s*-\s*[\s\S]+?(?=\n\s*-|$)/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
