@@ -17,7 +17,12 @@
 const CONFIG = {
   // 后端转换服务 (高可用轮询)
   backendUrls: [
-    "https://sub.metacubex.one/sub"
+    "https://api.wcc.best/sub",
+    "https://subconverter.speedupvpn.com/sub",
+    "https://sub.yorun.me/sub",
+    "https://api.dler.io/sub",
+    "https://subconv.is-sb.com/sub",
+    "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
   // 强力去噪
