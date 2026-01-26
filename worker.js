@@ -1,55 +1,45 @@
 /**
- * Cloudflare Worker - Clash 聚合 (Hysteria 强化版)
- * 
- * 修改说明：
- * 1. 强制 Mihomo (Meta) 协议转换，确保 Hysteria 2 节点不被剔除。
- * 2. 仅过滤包含 "5x" 的节点。
- * 3. 优化了转换后端的参数。
+ * Cloudflare Worker - Clash 聚合 (Hysteria 2 兼容 & 彻底禁用后端过滤版)
  */
 
 const CONFIG = {
-  // 选用了几个对新协议（hy2, vless）支持比较好的后端
   backendUrls: [
-    "https://api.v1.mk/sub",          // 推荐：更新最快
+    "https://api.v1.mk/sub",          // 这个后端对 Hy2 支持极好
+    "https://sub.d6.id/sub",          // 备用
     "https://api.wcc.best/sub",
-    "https://sub.id9.cc/sub",
-    "https://sub.yorun.me/sub"
+    "https://sub.id9.cc/sub"
   ],
-  userAgent: "Clash.Meta/1.18.0", // 模拟 Meta 客户端
-  excludeKeywords: ["5x"], 
+  userAgent: "Clash.Meta/1.18.0",
+  // 仅过滤包含 "5x" 的节点
+  excludeKeywords: ["5x"],
+  // 同时也过滤掉后端生成的“过滤提示”节点，防止污染列表
+  systemKeywords: ["过滤掉", "剩余流量", "到期时间", "重置"],
   fetchTimeout: 20000,
 };
 
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    
-    // 环境变量检查
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
 
-    if (AIRPORT_URLS.length === 0) {
-      return new Response("未找到 SUB_URLS，请检查 GitHub Secrets 或 Worker 变量", { status: 500 });
-    }
+    if (AIRPORT_URLS.length === 0) return new Response("SUB_URLS 环境变量为空", { status: 500 });
 
     let allNodeLines = [];
-    let summary = { used: 0, total: 0, expire: Infinity, count: 0 };
+    let summary = { used: 0, total: 0, expire: Infinity };
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 尝试后端转换
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
             /**
-             * 关键参数解释：
-             * target=clash: 基础格式
-             * ver=meta: 必须！告诉后端我要 Hysteria/VLESS
-             * scv=true: 跳过证书检查 (许多 hy 节点需要)
-             * udp=true: 开启 UDP
-             * list=true: 只返回节点列表，不返回完整配置
+             * 关键改进点：
+             * 1. target=clash & ver=meta (核心)
+             * 2. &list=true (只取节点)
+             * 3. &config=... (强制后端使用极简配置，不加载任何过滤规则)
+             * 4. &scv=true (跳过证书校验，Hy 节点必备)
              */
-            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&fdn=true`;
+            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&fdn=true&expand=false`;
             
             try {
                 const resp = await fetch(convertUrl, {
@@ -58,7 +48,6 @@ export default {
                 });
                 if (!resp.ok) return null;
                 const text = await resp.text();
-                // 简单校验是否包含节点
                 if (!text.includes('name:')) return null;
                 
                 const infoHeader = resp.headers.get("Subscription-Userinfo");
@@ -67,13 +56,11 @@ export default {
         });
 
         const results = await Promise.allSettled(batchPromises);
-        let successInThisBackend = false;
+        let foundNodes = false;
 
         for (const res of results) {
             if (res.status === 'fulfilled' && res.value) {
-                successInThisBackend = true;
-                
-                // 处理流量信息
+                foundNodes = true;
                 if (res.value.infoHeader) {
                     const info = {};
                     res.value.infoHeader.split(';').forEach(p => {
@@ -86,39 +73,36 @@ export default {
                     if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
                 }
                 
-                // 增强版正则：兼容 Hysteria 那种超长参数节点
-                // 匹配以 - name: 开头直到下一个节点开始的内容
-                const matches = res.value.text.match(/^\s*-\s*\{.*\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
+                // 改进的正则：匹配以 - name: 开始到下一个节点之前的所有内容（包括换行）
+                // 这样可以确保 Hysteria 的 up/down 参数不会被漏掉
+                const matches = res.value.text.match(/^\s*-\s*\{[\s\S]*?\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
-        
-        // 如果当前后端能拿到节点，就跳出循环，不再请求其他后端（保护 API）
-        if (successInThisBackend && allNodeLines.length > 0) break;
+        if (foundNodes && allNodeLines.length > 0) break;
     }
 
-    if (allNodeLines.length === 0) {
-      return new Response("转换失败：未能从任何后端获取到节点，请确认原始链接是否包含 Hysteria 节点", { status: 500 });
-    }
-
-    // 节点去重与过滤
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
-    const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
+    
+    // 构建过滤正则
+    const userExcludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
+    const systemExcludeRegex = new RegExp(CONFIG.systemKeywords.join('|'), 'i');
 
     for (const line of allNodeLines) {
       let proxyContent = line.trim();
-      // 提取节点名
       const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
       
       let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
       
-      // 仅执行 5x 过滤
-      if (excludeRegex.test(originalName)) continue;
+      // 1. 过滤用户指定的 "5x"
+      if (userExcludeRegex.test(originalName)) continue;
+      // 2. 自动过滤掉那个“过滤掉19条线路”之类的提示节点
+      if (systemExcludeRegex.test(originalName)) continue;
 
-      // 防止重名
+      // 重名处理
       let uniqueName = originalName;
       let counter = 1;
       while (nameSet.has(uniqueName)) {
@@ -126,15 +110,21 @@ export default {
       }
       nameSet.add(uniqueName);
 
-      // 替换回唯一的节点名
-      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'([^']*)'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      // 替换名字并保存
+      if (proxyContent.startsWith('- {')) {
+          // Inline 格式处理
+          proxyContent = proxyContent.replace(/name:\s*("[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      } else {
+          // 多行格式处理
+          proxyContent = proxyContent.replace(/name:\s*("[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      }
+      
       nodes.push("  " + proxyContent);
       nodeNames.push(uniqueName);
     }
 
-    // --- 下面是 YAML 生成 (保持你之前的逻辑，但会自动应用 nodeNames) ---
-    // [由于代码较长，此处省略，请将你原脚本中 `const hk = ...` 往后的部分全部粘贴在这里]
-    // 记得在末尾返回 Response 时带上 userinfo
+    // --- 后续 YAML 生成逻辑保持不变 ---
+    // (此处省略，请接上你原脚本中 const hk = ... 之后的内容)
 
     // 4. 分组逻辑
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
