@@ -2,7 +2,7 @@
  * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血增强版)
  * 
  * 📝 修改点：
- * 1. [Security] 必须携带 ?token=123 访问。
+ * 1. [Security] 必须携带 ?token=25698 访问。
  * 2. [Performance] 并发抓取所有机场，速度提升 300%。
  * 3. [Stability] 节点重名自动加 [1][2]，防止配置失效。
  * 4. [Integrity] 完整保留 100% 原始分流规则、DNS、TUN 配置，一个字不删。
@@ -12,7 +12,7 @@ const CONFIG = {
   userAgent: "ClashMeta",
   fetchTimeout: 15000,
   excludeKeywords: ["5x"],
-  defaultToken: "123" // 建议在此处或环境变量 TOKEN 中设置
+  defaultToken: "25698" // 建议在此处或环境变量 TOKEN 中设置
 };
 
 export default {
