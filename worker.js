@@ -60,8 +60,8 @@ export default {
     // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-			// 关键点：增加 &include_all=true 告诉后端不要过滤任何协议
-			const convertUrl = `${backend}?target=clash&ver=meta&include_all=true&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true`;
+            // 关键参数: udp=true, emoji=true
+            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
@@ -98,8 +98,7 @@ export default {
                     if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
                 
-                // 这个正则能完美捕获所有以 "-" 开头的节点块，直到遇到下一个 "-" 或结束
-				const matches = res.value.text.match(/^\s*-\s*[\s\S]+?(?=\n\s*-|$)/gm) || [];
+                const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
@@ -111,25 +110,30 @@ export default {
       return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
     }
 
-    // 3. 节点处理 (真正的全节点原样透传)
+    // 3. 节点处理
     const nodes = [];
     const nodeNames = [];
+    const nameSet = new Set();
+    const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
-    // 这个正则的意思是：找到所有以 " - " 开头的段落，不管里面写了什么新奇协议，全部原样拿走
-    const matches = allNodeLines; 
-
-    for (const proxyContent of matches) {
-      const content = proxyContent.trim();
-      
-      // 这里的正则只是为了“读出”名字，好让分组（如自动测速）能认出它
-      const nameMatch = content.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+    for (const line of allNodeLines) {
+      let proxyContent = line.trim();
+      const nameMatch = proxyContent.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (!nameMatch) continue;
+      let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
       
-      const nodeName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-      
-      // 这里就是你要求的：原样放入，不改名，不改协议，不改过滤
-      nodes.push("  " + content); 
-      nodeNames.push(nodeName); 
+      if (excludeRegex.test(originalName)) continue;
+
+      let uniqueName = originalName;
+      let counter = 1;
+      while (nameSet.has(uniqueName)) {
+        uniqueName = `${originalName}_${counter++}`;
+      }
+      nameSet.add(uniqueName);
+
+      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      nodes.push("  " + proxyContent);
+      nodeNames.push(uniqueName);
     }
 
     // 4. 分组逻辑
