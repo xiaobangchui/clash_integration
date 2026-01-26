@@ -64,7 +64,7 @@ export default {
               if (info.expire) summary.expire = info.expire;
             }
             // 物理切割：按 "- name:" 切割块，确保 Hy2 多行参数完整
-            const blocks = res.value.text.split(/\n\s*-\s+/);
+            const blocks = res.value.text.match(/^\s*-\s*\{[\s\S]*?\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
             for (let i = 1; i < blocks.length; i++) {
               if (blocks[i].includes("name:")) allNodeLines.push("- " + blocks[i].trimEnd());
             }
