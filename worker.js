@@ -1,35 +1,21 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血版)
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血无损版)
  * 
- * 📝 版本校验：DUAL-OS-FINAL-MAX
+ * 📝 版本校验：DUAL-OS-FINAL-MAX (HY-DIRECT-RECOVERY)
  * 
- * 🍎 Mac (macOS) 用户：请开启 TUN 模式，体验丝滑全局代理。
- * 🪟 Windows 用户：建议使用系统代理 (System Proxy)，如需尝试 TUN，此配置也做了最大兼容。
- * 
- * 🛡️ 核心功能回顾：
- * 1. [双模兼容] 内置 TUN 配置 (gvisor 栈)，同时适配系统代理模式。
- * 2. [DNS 纯净] 移除导致断流的强制 DNS 策略，回归 Fake-IP + 远程解析 (最稳)。
- * 3. [微软修复] OneDrive 网页走代理，客户端走直连。
- * 4. [防封锁] 币安/OKX/AI 物理隔离，防软封锁。
- * 5. [网络层] UDP 开启，并发关闭，防止阻断。
+ * 🛡️ 核心功能完全保留：
+ * 1. [直连无损] 彻底解决后端过滤 HY/HY2 节点的问题。
+ * 2. [双模兼容] 内置 TUN 配置 (gvisor 栈)，同时适配系统代理模式。
+ * 3. [流量聚合] 自动抓取并累加多机场流量、到期时间。
+ * 4. [微软修复] OneDrive 网页走代理，客户端走直连（完全保留）。
+ * 5. [规则全量] 币安/OKX/AI 物理隔离，所有的 rule-providers 完整在位。
  */
 
 const CONFIG = {
-  // 后端转换服务 (高可用轮询)
-  backendUrls: [
-    "https://api.wcc.best/sub",
-    "https://subconverter.speedupvpn.com/sub",
-    "https://sub.yorun.me/sub",
-    "https://api.dler.io/sub",
-    "https://subconv.is-sb.com/sub",
-    "https://sub.id9.cc/sub"
-  ],
-  userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪
-  excludeKeywords: [
-    "5x"
-  ],
+  userAgent: "ClashMeta", // 模拟 Meta 标识确保机场返回 HY 节点
   fetchTimeout: 30000,
+  // 强力去噪 (保留你的功能)
+  excludeKeywords: ["5x"],
 };
 
 export default {
@@ -43,78 +29,90 @@ export default {
       });
     }
 
-    // 1. 获取订阅
+    // 1. 获取订阅链接 (环境变量)
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
 
     if (AIRPORT_URLS.length === 0) {
-      return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
+      return new Response("配置错误：未找到 SUB_URLS 环境变量。", { status: 500 });
     }
 
-    let allNodeLines = [];
+    let nodes = [];
+    let nodeNames = [];
     let summary = { used: 0, total: 0, expire: Infinity, count: 0, minRemainGB: Infinity };
     let totalUpload = 0;
     let totalDownload = 0;
+    const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
-    // 2. 直接抓取订阅（跳过转换接口，防止过滤）
+    // 2. 直接抓取订阅 (核心逻辑修改：不再经过后端，防止过滤 HY 节点)
     for (const subUrl of AIRPORT_URLS) {
         try {
-          const resp = await fetch(subUrl, {
-            headers: { "User-Agent": "ClashMeta" }, // 模拟 ClashMeta 去抓取
-            signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-          });
-          if (!resp.ok) continue;
-          const text = await resp.text();
+            const resp = await fetch(subUrl, {
+                headers: { "User-Agent": "ClashMeta" },
+                signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+            });
+            if (!resp.ok) continue;
 
-          // 3. 暴力提取节点 (只要是 proxies: 下面的内容都拿走)
-          // 我们不再依赖后端，直接从你原有的 Clash 订阅里提取节点
-          const proxySection = text.split(/proxies:\s*\n/i)[1]?.split(/proxy-groups:|rules:|rule-providers:/i)[0];
-          
-          if (proxySection) {
-            // 将节点块按行切分
-            const rawNodes = proxySection.split('\n');
-            let currentNode = "";
-
-            for (let line of rawNodes) {
-              const trimmed = line.trimEnd();
-              if (!trimmed || trimmed.startsWith('#')) continue;
-
-              // 只要是以 "-" 开头，就是新节点
-              if (trimmed.trimStart().startsWith('-')) {
-                if (currentNode) pushNode(currentNode);
-                currentNode = trimmed;
-              } else {
-                // 多行节点（如 HY2）的后续部分
-                if (currentNode) currentNode += "\n" + trimmed;
-              }
+            // --- 流量统计 (原汁原味聚合) ---
+            const infoHeader = resp.headers.get("Subscription-Userinfo");
+            if (infoHeader) {
+                const info = {};
+                infoHeader.split(';').forEach(p => {
+                    const [k, v] = p.trim().split('=');
+                    if (k && v) info[k.trim()] = parseInt(v) || 0;
+                });
+                totalUpload += (info.upload || 0);
+                totalDownload += (info.download || 0);
+                summary.used += (info.upload || 0) + (info.download || 0);
+                summary.total += (info.total || 0);
+                if (info.expire && info.expire < summary.expire && info.expire > 0) summary.expire = info.expire;
+                const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
+                if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
+                summary.count++;
             }
-            if (currentNode) pushNode(currentNode);
-          }
+
+            const text = await resp.text();
+            // 暴力提取 proxies: 块 (无视后端过滤)
+            const proxySection = text.split(/proxies:\s*\n/i)[1]?.split(/proxy-groups:|rules:|rule-providers:|dns:|tun:|sniffer:/i)[0];
+            
+            if (proxySection) {
+                const lines = proxySection.split('\n');
+                let currentNode = "";
+                for (let line of lines) {
+                    const trimmed = line.trimEnd();
+                    if (!trimmed || trimmed.trimStart().startsWith('#')) continue;
+                    // 识别节点开始 (-)
+                    if (trimmed.trimStart().startsWith('-')) {
+                        if (currentNode) processNode(currentNode);
+                        currentNode = trimmed;
+                    } else {
+                        if (currentNode) currentNode += "\n" + trimmed;
+                    }
+                }
+                if (currentNode) processNode(currentNode);
+            }
         } catch (e) {
-          console.log("抓取失败:", subUrl, e);
+            console.log("抓取失败:", subUrl, e);
         }
     }
 
-    function pushNode(raw) {
-      // 提取名字用于分组
-      const nMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
-      if (nMatch) {
-        const name = (nMatch[1] || nMatch[2] || nameMatch[3]).trim();
-        nodes.push("  " + raw.trim());
-        nodeNames.push(name);
-      }
+    function processNode(raw) {
+        const nameMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+        if (nameMatch) {
+            const name = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+            // 保留你的去噪功能
+            if (CONFIG.excludeKeywords.length > 0 && excludeRegex.test(name)) return;
+            nodes.push("  " + raw.trim());
+            nodeNames.push(name);
+        }
     }
-    
-    // 调试：在后台看抓到了什么
-    console.log("抓取到的节点总数:", nodes.length);
-    if (nodes.length > 0) console.log("第一个节点预览:", nodes[0]);
 
     if (nodes.length === 0) {
-      return new Response("错误：未能从订阅中提取到节点。请检查你的 SUB_URLS 是否为有效的 Clash 订阅链接。", { status: 500 });
+      return new Response("错误：未能提取到节点，请检查 SUB_URLS 是否为有效 Clash 订阅。", { status: 500 });
     }
 
-    // 4. 分组逻辑
+    // 3. 地区自动分组逻辑 (保留)
     const hk  = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw  = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp  = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -127,9 +125,9 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const minRemainGB = isFinite(summary.minRemainGB) ? summary.minRemainGB.toFixed(1) : "未知";
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 双端通用满血版`;
+    const trafficHeader = `# 📊 流量: ${usedGB}GB / 剩${minRemainGB}GB | 到期: ${expireDate} | 🏆 满血无损版`;
 
-    // 5. 生成 YAML
+    // 4. 生成 YAML (这里完整保留了你的所有 100% 规则、DNS 和 TUN 配置)
     const yaml = `
 ${trafficHeader}
 mixed-port: 7890
