@@ -57,11 +57,11 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端 (使用 allSettled 容错机制)
+    // 2. 遍历后端并获取原始数据
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-			// 关键点：增加 &include_all=true 告诉后端不要过滤任何协议
-			const convertUrl = `${backend}?target=clash&ver=meta&include_all=true&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true`;
+            // 重点：使用 target=clashmeta，这是支持 HY2 最稳的参数
+            const convertUrl = `${backend}?target=clashmeta&include_all=true&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
@@ -69,9 +69,14 @@ export default {
                 });
                 if (!resp.ok) return null;
                 const text = await resp.text();
-                if (!text.includes('proxies:') && !text.includes('name:')) return null;
-                const infoHeader = resp.headers.get("Subscription-Userinfo");
-                return { text, infoHeader };
+                
+                // --- 【后台调试日志】 ---
+                console.log("--- 成功获取数据，前500字符内容如下 ---");
+                console.log(text.substring(0, 500)); 
+                // -----------------------
+
+                if (!text.includes('name:')) return null;
+                return { text };
             } catch (e) { return null; }
         });
 
@@ -81,30 +86,29 @@ export default {
         for (const res of results) {
             if (res.status === 'fulfilled' && res.value) {
                 currentBackendValid = true;
-                summary.count++;
                 
-                if (res.value.infoHeader) {
-                    const info = {};
-                    res.value.infoHeader.split(';').forEach(p => {
-                        const [k, v] = p.trim().split('=');
-                        if (k && v) info[k.trim()] = parseInt(v) || 0;
-                    });
-                    totalUpload += (info.upload || 0);
-                    totalDownload += (info.download || 0);
-                    summary.used += (info.upload || 0) + (info.download || 0);
-                    summary.total += (info.total || 0);
-                    if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
-                    const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
-                    if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
+                // 【核心逻辑改动】：不再使用正则 match，改用 split 物理切割
+                // 只要是 "\n- "（换行加减号）开头的，就认为是一个新节点的开始
+                const rawParts = res.value.text.split(/^ *- /gm);
+                
+                for (let part of rawParts) {
+                    part = part.trim();
+                    if (part.length < 10) continue; // 过滤掉太短的脏数据
+                    
+                    // 补回被 split 删掉的 "- "
+                    const proxyLine = part.startsWith('- ') ? part : "- " + part;
+                    
+                    // 只需要从这块内容里读出 name 字段，用于分组
+                    const nameMatch = proxyLine.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+                    if (nameMatch) {
+                        const nodeName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+                        nodes.push("  " + proxyLine);
+                        nodeNames.push(nodeName);
+                    }
                 }
-                
-                // 这个正则能完美捕获所有以 "-" 开头的节点块，直到遇到下一个 "-" 或结束
-				const matches = res.value.text.match(/^\s*-\s*[\s\S]+?(?=\n\s*-|$)/gm) || [];
-                allNodeLines.push(...matches);
             }
         }
-        
-        if (currentBackendValid && allNodeLines.length > 0) break;
+        if (currentBackendValid && nodes.length > 0) break;
     }
 
     if (allNodeLines.length === 0) {
