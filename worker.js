@@ -15,7 +15,7 @@
  */
 
 const CONFIG = {
-  // 后端转换服务 (高可用轮询)
+  // 后端转换服务
   backendUrls: [
     "https://api.wcc.best/sub",
     "https://subconverter.speedupvpn.com/sub",
@@ -25,14 +25,8 @@ const CONFIG = {
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // 强力去噪
-  excludeKeywords: [
-    "5x", "10x", "x5", "x10", 
-    "到期", "剩余", "流量", "太旧", "过期", "时间", "重置",
-    "试用", "赠送", "限速", "低速", 
-    "群", "官网", "客服", "网站", "更新", "通知", 
-    "机场", "订阅", "限时", "促销"
-  ],
+  // 按照要求：仅过滤 5x 节点
+  excludeKeywords: ["5x"], 
   fetchTimeout: 30000,
 };
 
@@ -40,20 +34,18 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 0. 健康检查
     if (url.pathname === "/health") {
-      return new Response(JSON.stringify({ status: "ok", msg: "Dual OS Ready" }), {
+      return new Response(JSON.stringify({ status: "ok" }), {
         headers: { "Content-Type": "application/json" }
       });
     }
 
-    // 1. 获取订阅
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
 
     if (AIRPORT_URLS.length === 0) {
-      return new Response("配置错误：未找到 SUB_URLS 环境变量。\n请检查 GitHub Secrets 是否正确设置。", { status: 500 });
+      return new Response("未找到 SUB_URLS 环境变量", { status: 500 });
     }
 
     let allNodeLines = [];
@@ -61,11 +53,10 @@ export default {
     let totalUpload = 0;
     let totalDownload = 0;
 
-    // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 关键参数: udp=true, emoji=true
-            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+            // 关键：target=clash & ver=meta 是支持 hy2 的前提
+            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
@@ -73,7 +64,6 @@ export default {
                 });
                 if (!resp.ok) return null;
                 const text = await resp.text();
-                if (!text.includes('proxies:') && !text.includes('name:')) return null;
                 const infoHeader = resp.headers.get("Subscription-Userinfo");
                 return { text, infoHeader };
             } catch (e) { return null; }
@@ -98,26 +88,24 @@ export default {
                     summary.used += (info.upload || 0) + (info.download || 0);
                     summary.total += (info.total || 0);
                     if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
-                    const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
-                    if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
                 
+                // 改进的正则匹配：同时支持 inline 和 block 格式
                 const matches = res.value.text.match(/^\s*-\s*\{.*name:.*\}|^\s*-\s*name:.*(?:\n\s+.*)*/gm) || [];
                 allNodeLines.push(...matches);
             }
         }
-        
         if (currentBackendValid && allNodeLines.length > 0) break;
     }
 
     if (allNodeLines.length === 0) {
-      return new Response("错误：所有后端均无法获取节点，请检查订阅链接是否有效。", { status: 500 });
+      return new Response("所有后端均无法获取节点，请检查订阅链接", { status: 500 });
     }
 
-    // 3. 节点处理
     const nodes = [];
     const nodeNames = [];
     const nameSet = new Set();
+    // 仅过滤 5x
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
     for (const line of allNodeLines) {
@@ -126,6 +114,7 @@ export default {
       if (!nameMatch) continue;
       let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
       
+      // 仅执行 5x 过滤
       if (excludeRegex.test(originalName)) continue;
 
       let uniqueName = originalName;
@@ -135,7 +124,7 @@ export default {
       }
       nameSet.add(uniqueName);
 
-      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'[^']*'|[^,\}\n]+)/, `name: "${uniqueName}"`);
+      proxyContent = proxyContent.replace(/name:\s*(?:"[^"]*"|'([^']*)'|[^,\}\n]+)/, `name: "${uniqueName}"`);
       nodes.push("  " + proxyContent);
       nodeNames.push(uniqueName);
     }
