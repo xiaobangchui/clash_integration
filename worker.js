@@ -17,12 +17,7 @@
 const CONFIG = {
   // 后端转换服务 (高可用轮询)
   backendUrls: [
-    "https://api.wcc.best/sub",
-    "https://subconverter.speedupvpn.com/sub",
-    "https://sub.yorun.me/sub",
-    "https://api.dler.io/sub",
-    "https://subconv.is-sb.com/sub",
-    "https://sub.id9.cc/sub"
+    "https://sub.metacubex.one/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
   // 强力去噪
@@ -60,8 +55,8 @@ export default {
     // 2. 遍历后端 (使用 allSettled 容错机制)
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 关键参数: udp=true, emoji=true
-            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+            // 建议改为 target=clashmeta 明确告知后端你需要 Meta 协议支持
+			const convertUrl = `${backend}?target=clashmeta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
