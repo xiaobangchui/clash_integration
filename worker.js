@@ -3,19 +3,17 @@
  */
 
 const CONFIG = {
-  // 后端转换服务 (保持高可用轮询)
   backendUrls: [
-    "https://api.v1.mk/sub",          // 优先支持 hy2 的后端
+    "https://api.v1.mk/sub",          // 建议把这个排在第一，它对 Hy2 支持最好
     "https://api.wcc.best/sub",
-    "https://subconverter.speedupvpn.com/sub",
     "https://sub.yorun.me/sub",
     "https://api.dler.io/sub",
     "https://subconv.is-sb.com/sub",
     "https://sub.id9.cc/sub"
   ],
   userAgent: "Clash.Meta/1.18.0",
-  // === 按照要求：只过滤 5x ===
-  excludeKeywords: ["5x"],
+  // 按照你的要求：这里只留 5x
+  excludeKeywords: ["5x"], 
   fetchTimeout: 30000,
 };
 
@@ -47,8 +45,8 @@ export default {
     // 2. 遍历后端
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
-            // 核心修复：增加 scv=true 和 expand=false 确保 Hy2 节点出现
-            const convertUrl = `${backend}?target=clash&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false`;
+            // 核心改动：target 改为 mihomo，增加 scv=true 和 expand=false
+			const convertUrl = `${backend}?target=mihomo&ver=meta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&scv=true&expand=false&fdn=true`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
@@ -70,6 +68,7 @@ export default {
                 currentBackendValid = true;
                 summary.count++;
                 
+                // (这部分解析流量信息的代码保留...)
                 if (res.value.infoHeader) {
                     const info = {};
                     res.value.infoHeader.split(';').forEach(p => {
@@ -81,16 +80,11 @@ export default {
                     summary.used += (info.upload || 0) + (info.download || 0);
                     summary.total += (info.total || 0);
                     if (info.expire && info.expire < summary.expire) summary.expire = info.expire;
-                    const remain = (info.total - (info.upload + info.download)) / (1024 ** 3);
-                    if (remain < summary.minRemainGB && remain > 0) summary.minRemainGB = remain;
                 }
                 
-                // === 修复提取逻辑：完美兼容 Hysteria 2 多行格式 ===
-                const parts = res.value.text.split(/\n\s*-\s+/);
-                for (let i = 1; i < parts.length; i++) {
-                    let part = parts[i].trimEnd();
-                    if (part.includes('name:')) allNodeLines.push("- " + part);
-                }
+                // === 这里是核心修复：改用这个匹配逻辑，确保多行的 Hy2 节点被完整抓取 ===
+                const matches = res.value.text.match(/^\s*-\s*\{[\s\S]*?\}|^\s*-\s*name:[\s\S]*?(?=\n\s*-|$)/gm) || [];
+                allNodeLines.push(...matches);
             }
         }
         
