@@ -61,7 +61,7 @@ export default {
     for (const backend of CONFIG.backendUrls) {
         const batchPromises = AIRPORT_URLS.map(async (subUrl) => {
             // 建议改为 target=clashmeta 明确告知后端你需要 Meta 协议支持
-			const convertUrl = `${backend}?target=clashmeta&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
+			const convertUrl = `${backend}?target=mihomo&url=${encodeURIComponent(subUrl)}&list=true&emoji=true&udp=true&insert=false`;
             try {
                 const resp = await fetch(convertUrl, {
                     headers: { "User-Agent": CONFIG.userAgent },
