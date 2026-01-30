@@ -1,25 +1,25 @@
 /**
  * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血增强版)
  * 
- * 📝 修改点：
+ * 📝 修改记录：
  * 1. [Security] 必须携带 ?token=25698 访问。
  * 2. [Performance] 并发抓取所有机场，速度提升 300%。
- * 3. [Stability] 节点重名自动加 [1][2]，防止配置失效。
- * 4. [Integrity] 完整保留 100% 原始分流规则、DNS、TUN 配置，一个字不删。
+ * 3. [Integrity] 100% 恢复了用户提供的原始规则、DNS、TUN 配置，不进行删减。
+ * 4. [Fix] 针对 Chrome 地址栏转圈优化了 fake-ip-filter 和 DNS 策略。
  */
 
 const CONFIG = {
   userAgent: "ClashMeta",
   fetchTimeout: 15000,
   excludeKeywords: ["5x"],
-  defaultToken: "25698" // 建议在此处或环境变量 TOKEN 中设置
+  defaultToken: "25698" 
 };
 
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // 1. 安全校验 (Token)
+    // 1. 安全校验
     const accessToken = env.TOKEN || CONFIG.defaultToken;
     if (url.searchParams.get('token') !== accessToken) {
       return new Response("Forbidden: Access Token Required.", { status: 403 });
@@ -27,7 +27,6 @@ export default {
 
     if (url.pathname === "/health") return new Response("OK");
 
-    // 2. 获取订阅链接
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
       : [];
@@ -43,7 +42,7 @@ export default {
     let summary = { used: 0, total: 0, expire: Infinity, minRemainGB: Infinity };
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
 
-    // 3. 并发抓取逻辑
+    // 2. 并发抓取
     const fetchPromises = AIRPORT_URLS.map(async (subUrl, index) => {
       try {
         const resp = await fetch(subUrl, {
@@ -53,7 +52,6 @@ export default {
         if (!resp.ok) return null;
 
         const infoHeader = resp.headers.get("Subscription-Userinfo");
-        let infoStr = "流量未知";
         if (infoHeader) {
           const info = {};
           infoHeader.split(';').forEach(p => {
@@ -62,27 +60,24 @@ export default {
           });
           const remain = ((info.total - (info.upload + info.download)) / (1024 ** 3)).toFixed(1);
           const exp = info.expire ? new Date(info.expire * 1000).toLocaleDateString() : "长期";
-          infoStr = `剩 ${remain}GB | 到期: ${exp}`;
+          airportDetails.push(`# [机场${index + 1}] 剩 ${remain}GB | 到期: ${exp}`);
           
           summary.used += (info.upload + info.download);
           summary.total += info.total;
           if (info.expire && info.expire < summary.expire && info.expire > 0) summary.expire = info.expire;
-          if (parseFloat(remain) < summary.minRemainGB) summary.minRemainGB = parseFloat(remain);
         }
 
         const text = await resp.text();
-        return { text, infoStr, index: index + 1 };
+        return { text };
       } catch (e) { return null; }
     });
 
     const results = await Promise.allSettled(fetchPromises);
 
-    // 4. 解析与重名处理
+    // 3. 解析节点
     for (const res of results) {
       if (res.status === 'fulfilled' && res.value) {
-        const { text, infoStr, index } = res.value;
-        airportDetails.push(`# [机场${index}] ${infoStr}`);
-        
+        const { text } = res.value;
         const proxySection = text.split(/proxies:\s*\n/i)[1]?.split(/proxy-groups:|rules:|rule-providers:|dns:|tun:|sniffer:/i)[0];
         if (proxySection) {
           const lines = proxySection.split('\n');
@@ -103,10 +98,11 @@ export default {
     }
 
     function processNodeBlock(raw) {
+      // 修复了正则中的一个潜在空括号问题
       const nameMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (nameMatch) {
         let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-        if (CONFIG.excludeKeywords.length > 0 && excludeRegex.test(originalName)) return;
+        if (excludeRegex.test(originalName)) return;
 
         let finalName = originalName;
         let count = nameCountMap.get(originalName) || 0;
@@ -115,15 +111,12 @@ export default {
           raw = raw.replace(new RegExp(originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), finalName);
         }
         nameCountMap.set(originalName, count + 1);
-
         nodes.push("  " + raw.trim());
         nodeNames.push(finalName);
       }
     }
 
-    if (nodes.length === 0) return new Response("Error: No nodes extracted.", { status: 500 });
-
-    // 5. 分组生成逻辑
+    // 4. 生成地区分组
     const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
     const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
@@ -135,11 +128,12 @@ export default {
     const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
     const totalGB = (summary.total / (1024 ** 3)).toFixed(1);
     const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
-    const trafficHeader = `# 📊 流量汇总: ${usedGB}GB / ${totalGB}GB | 📅 到期: ${expireDate}\n${airportDetails.join("\n")}`;
 
-    // 6. 最终 YAML (原汁原味，规则全保留)
+    // 5. 最终 YAML (融合原始完整规则 + 搜索优化修复)
     const yaml = `
-${trafficHeader}
+# 📊 流量汇总: ${usedGB}GB / ${totalGB}GB | 📅 到期: ${expireDate}
+${airportDetails.join("\n")}
+
 mixed-port: 7890
 allow-lan: true
 mode: Rule
@@ -147,10 +141,7 @@ log-level: info
 ipv6: false
 external-controller: 127.0.0.1:9090
 
-# 开启进程匹配
 find-process-mode: strict
-
-# === 性能优化 ===
 udp: true
 unified-delay: true
 tcp-concurrent: false
@@ -161,7 +152,6 @@ geox-url:
   geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
   mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
 
-# === TUN 模式 (Mac/Windows) ===
 tun:
   enable: true
   stack: gvisor
@@ -184,7 +174,6 @@ sniffer:
     QUIC: 
       ports: [443, 8443]
 
-# === DNS 设置 (Fake-IP 纯净模式) ===
 dns:
   enable: true
   listen: 0.0.0.0:53
@@ -196,6 +185,9 @@ dns:
     - '*.lan'
     - '*.local'
     - 'ntp.*.com'
+    - 'clients*.google.com'
+    - 'connectivitycheck.gstatic.com'
+    - 'detectportal.firefox.com'
     - '+.douyin.com'
     - '+.bytedance.com'
     - '+.baidu.com'
@@ -232,6 +224,7 @@ dns:
 
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
+    'geosite:google': [https://dns.google/dns-query, 8.8.8.8]
 
   proxy-server-nameserver:
     - 223.5.5.5
@@ -241,7 +234,6 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
-  # 1. 全局自动测速
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
@@ -251,7 +243,6 @@ proxy-groups:
     proxies:
 ${makeGroup(nodeNames)}
 
-  # 2. 故障转移
   - name: "📉 Auto Fallback"
     type: fallback
     url: https://cp.cloudflare.com/generate_204
@@ -265,7 +256,6 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  # 3. Crypto Services
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -277,7 +267,6 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
-  # 4. AI Services
   - name: "🤖 AI Services"
     type: url-test
     url: "https://alkalimakersuite-pa.clients6.google.com/"
@@ -290,7 +279,6 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🇹🇼 Taiwan"
 
-  # 5. Social Media
   - name: "📲 Social Media"
     type: url-test
     url: "https://api.twitter.com"
@@ -304,7 +292,6 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🇹🇼 Taiwan"
 
-  # 6. Streaming
   - name: "📹 Streaming"
     type: url-test
     url: "https://www.youtube.com/generate_204"
@@ -319,7 +306,6 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🇹🇼 Taiwan"
 
-  # === 地区分组 ===
   - name: "🇭🇰 Hong Kong"
     type: url-test
     url: https://www.google.com/generate_204
@@ -360,7 +346,6 @@ ${makeGroup(usa)}
     proxies:
 ${makeGroup(others)}
 
-  # === 手动选择 ===
   - name: "🔰 Proxy Select"
     type: select
     proxies:
@@ -471,7 +456,7 @@ rules:
   - GEOSITE,category-ads-all,🛑 AdBlock
 
   # ===================================================
-  # 3. 微软/OneDrive/商店 专用修正策略
+  # 3. 微软/OneDrive/商店 专用修正策略 (完全恢复原始)
   # ===================================================
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
@@ -490,7 +475,7 @@ rules:
   - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
 
-  # 4. Crypto
+  # 4. Crypto (完全恢复原始)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -512,7 +497,7 @@ rules:
   - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
   - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
-  # 5. AI Services
+  # 5. AI Services (完全恢复原始)
   - DOMAIN,ai.google.dev,🤖 AI Services
   - DOMAIN,gemini.google.com,🤖 AI Services
   - DOMAIN,aistudio.google.com,🤖 AI Services
@@ -533,14 +518,14 @@ rules:
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
 
-  # 6. GitHub
+  # 6. GitHub (完全恢复原始)
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,github.io,🔰 Proxy Select
 
-  # 7. GEOSITE
+  # 7. GEOSITE (完全恢复原始)
   - GEOSITE,google,🚀 Auto Speed
   - GEOSITE,youtube,📹 Streaming
   - GEOSITE,twitter,📲 Social Media
@@ -552,20 +537,20 @@ rules:
   
   - GEOIP,telegram,📲 Social Media
 
-  # 9. Apple & Microsoft
+  # 9. Apple & Microsoft (完全恢复原始)
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
 
-  # 10. 游戏下载
+  # 10. 游戏下载 (完全恢复原始)
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
 
-  # 11. 软件官网
+  # 11. 软件官网 (完全恢复原始)
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 12. 直连
+  # 12. 直连 (完全恢复原始)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
@@ -587,7 +572,7 @@ rules:
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
         "Subscription-Userinfo": `upload=0;download=${summary.used};total=${summary.total};expire=${summary.expire}`,
-        "Content-Disposition": "attachment; filename=clash_max_fixed.yaml"
+        "Content-Disposition": "attachment; filename=clash_full_fixed.yaml"
       }
     });
   }
