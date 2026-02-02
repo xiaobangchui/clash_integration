@@ -173,6 +173,10 @@ sniffer:
       ports: [80, 8080-8880]
     QUIC: 
       ports: [443, 8443]
+  # 强制部分域名重新嗅探
+  force-domain:
+    - '+.okx.com'
+    - '+.binance.com'
 
 dns:
   enable: true
@@ -200,6 +204,13 @@ dns:
     - '+.jd.com'
     - '+.microsoft.com'
     - '+.windowsupdate.com'
+    - '+.okx.com'
+    - '+.okex.com'
+    - '+.oklink.com'
+    - '+.binance.com'
+    - '+.bnbdaze.com'
+    - '+.metamask.io'
+    - '+.walletconnect.com'
 
   default-nameserver:
     - 223.5.5.5
