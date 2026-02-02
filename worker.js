@@ -180,6 +180,8 @@ sniffer:
     - '+.oklink.com'
     - '+.okxcdn.com'
     - '+.okx-dns.com'
+    - '+.okx-doh.com'
+    - '+.okx-httpdns.com'
     - '+.binance.com'
 
 dns:
@@ -193,12 +195,13 @@ dns:
     - '+.okx.com'
     - '+.okxcdn.com'
     - '+.okx-dns.com'
+    - '+.okx-doh.com'
+    - '+.okx-httpdns.com'
     - '+.okex.com'
     - '+.oklink.com'
     - '+.binance.com'
     - '+.metamask.io'
     - '+.walletconnect.org'
-    # ... 原有的其他内容保持不变
     - '*.lan'
     - '*.local'
     - 'ntp.*.com'
@@ -499,6 +502,8 @@ rules:
   - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okxcdn.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okx-doh.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - GEOSITE,okx,💰 Crypto Services
