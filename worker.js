@@ -173,11 +173,6 @@ sniffer:
       ports: [80, 8080-8880]
     QUIC: 
       ports: [443, 8443]
-  # 增加下面这一段：跳过对 OKX 域名的嗅探
-  skip-domain:
-    - '+.okx.com'
-    - '+.okex.com'
-    - '+.oklink.com'
 
 dns:
   enable: true
@@ -205,14 +200,6 @@ dns:
     - '+.jd.com'
     - '+.microsoft.com'
     - '+.windowsupdate.com'
-    - '+.okx.com'
-    - '+.okex.com'
-    - '+.oklink.com'
-    - '+.binance.com'
-    - '+.bnbdaze.com'
-    - '+.metamask.io'
-    - '+.walletconnect.com'
-    - 'localhost.ptlogin2.qq.com' # 顺带解决一些登录插件问题
 
   default-nameserver:
     - 223.5.5.5
@@ -234,10 +221,8 @@ dns:
     geoip-code: CN
     ipcidr:
       - 240.0.0.0/4
-	  
-# 强制 OKX 使用特定的解析策略
+
   nameserver-policy:
-    'geosite:crypto,okx,binance': [https://dns.google/dns-query, 8.8.8.8]
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
     'geosite:google': [https://dns.google/dns-query, 8.8.8.8]
 
