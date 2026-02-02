@@ -223,7 +223,6 @@ dns:
       - 240.0.0.0/4
 
   nameserver-policy:
-    'geosite:okx,binance,crypto': [https://dns.google/dns-query, 8.8.8.8]
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
     'geosite:google': [https://dns.google/dns-query, 8.8.8.8]
 
