@@ -173,10 +173,6 @@ sniffer:
       ports: [80, 8080-8880]
     QUIC: 
       ports: [443, 8443]
-  # 强制部分域名重新嗅探
-  force-domain:
-    - '+.okx.com'
-    - '+.binance.com'
 
 dns:
   enable: true
@@ -192,13 +188,6 @@ dns:
     - 'clients*.google.com'
     - 'connectivitycheck.gstatic.com'
     - 'detectportal.firefox.com'
-	- '+.okx.com'
-    - '+.okex.com'
-    - '+.oklink.com'
-    - '+.binance.com'
-    - '+.bnbdaze.com'
-    - '+.metamask.io'
-    - '+.walletconnect.com'
     - '+.douyin.com'
     - '+.bytedance.com'
     - '+.baidu.com'
