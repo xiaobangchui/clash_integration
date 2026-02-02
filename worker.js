@@ -173,6 +173,12 @@ sniffer:
       ports: [80, 8080-8880]
     QUIC: 
       ports: [443, 8443]
+  # 增加下面这段：跳过对 OKX 域名的嗅探
+  skip-domain:
+    - '+.okx.com'
+    - '+.okex.com'
+    - '+.oklink.com'
+    - '+.binance.com'
 
 dns:
   enable: true
@@ -182,6 +188,13 @@ dns:
   respect-rules: true
   
   fake-ip-filter:
+    - '+.okx.com'
+    - '+.okex.com'
+    - '+.oklink.com'
+    - '+.binance.com'
+    - '+.metamask.io'
+    - '+.walletconnect.org'
+    # ... 原有的其他内容保持不变
     - '*.lan'
     - '*.local'
     - 'ntp.*.com'
@@ -224,7 +237,7 @@ dns:
 
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, https://doh.pub/dns-query]
-    'geosite:google': [https://dns.google/dns-query, 8.8.8.8]
+    'geosite:google,okx,binance': [https://dns.google/dns-query, 8.8.8.8]
 
   proxy-server-nameserver:
     - 223.5.5.5
@@ -482,6 +495,8 @@ rules:
   - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
+  - GEOSITE,okx,💰 Crypto Services
+  - GEOSITE,binance,💰 Crypto Services
   - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okcdn.com,💰 Crypto Services
   - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
