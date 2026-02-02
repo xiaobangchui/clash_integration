@@ -178,6 +178,8 @@ sniffer:
     - '+.okx.com'
     - '+.okex.com'
     - '+.oklink.com'
+    - '+.okxcdn.com'
+    - '+.okx-dns.com'
     - '+.binance.com'
 
 dns:
@@ -189,6 +191,8 @@ dns:
   
   fake-ip-filter:
     - '+.okx.com'
+    - '+.okxcdn.com'
+    - '+.okx-dns.com'
     - '+.okex.com'
     - '+.oklink.com'
     - '+.binance.com'
@@ -493,6 +497,8 @@ rules:
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okxcdn.com,💰 Crypto Services
+  - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - GEOSITE,okx,💰 Crypto Services
