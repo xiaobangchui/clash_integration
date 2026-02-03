@@ -183,6 +183,7 @@ sniffer:
     - '+.okx-doh.com'
     - '+.okx-httpdns.com'
     - '+.okx.cab'
+    - '+.okex.org'
     - '+.binance.com'
 
 dns:
@@ -199,6 +200,7 @@ dns:
     - '+.okx-doh.com'
     - '+.okx-httpdns.com'
     - '+.okx.cab'
+    - '+.okex.org'
     - '+.okex.com'
     - '+.oklink.com'
     - '+.binance.com'
@@ -507,6 +509,7 @@ rules:
   - DOMAIN-SUFFIX,okx-doh.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
   - DOMAIN-SUFFIX,okx.cab,💰 Crypto Services
+  - DOMAIN-SUFFIX,okex.org,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - GEOSITE,okx,💰 Crypto Services
