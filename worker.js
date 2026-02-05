@@ -154,7 +154,7 @@ geox-url:
 
 tun:
   enable: true
-  stack: system
+  stack: gvisor
   auto-route: true
   auto-detect-interface: true
   dns-hijack:
