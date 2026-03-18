@@ -578,10 +578,6 @@ rules:
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
 
-  # 11. 下载相关
-  - DOMAIN-SUFFIX,registry.npmjs.org,🔰 Proxy Select
-  - DOMAIN-SUFFIX,raw.githubusercontent.com,🔰 Proxy Select
-
   # 12. 直连 (完全恢复原始)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
