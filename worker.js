@@ -485,6 +485,7 @@ rules:
   - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,neat-reader.com,🔰 Proxy Select
 
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
