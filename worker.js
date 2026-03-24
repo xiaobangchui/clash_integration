@@ -333,7 +333,7 @@ ${makeGroup(nodeNames)}
     proxies:
 ${makeGroup(hk)}
 
-  - name: "🇹🇼 Taiwan"
+  - name: "🏮 Taiwan"
     type: url-test
     url: https://www.google.com/generate_204
     interval: 600
