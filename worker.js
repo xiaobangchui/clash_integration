@@ -578,6 +578,10 @@ rules:
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
+  - DOMAIN-SUFFIX,gmail.com,🔰 Proxy Select
+  - DOMAIN,imap.gmail.com,🔰 Proxy Select
+  - DOMAIN,smtp.gmail.com,🔰 Proxy Select
+  - DOMAIN-SUFFIX,google.com,🔰 Proxy Select
 
   # 12. 直连 (完全恢复原始)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
