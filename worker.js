@@ -270,7 +270,7 @@ ${makeGroup(nodeNames)}
     lazy: true
     proxies:
       - "🇭🇰 Hong Kong"
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
@@ -283,7 +283,7 @@ ${makeGroup(nodeNames)}
     tolerance: 100
     lazy: true
     proxies:
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
 
@@ -297,7 +297,7 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
 
   - name: "📲 Social Media"
     type: url-test
@@ -310,7 +310,7 @@ ${makeGroup(nodeNames)}
       - "🇭🇰 Hong Kong"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
 
   - name: "📹 Streaming"
     type: url-test
@@ -324,7 +324,7 @@ ${makeGroup(nodeNames)}
       - "🇸🇬 Singapore"
       - "🇯🇵 Japan"
       - "🇺🇸 USA"
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
 
   - name: "🇭🇰 Hong Kong"
     type: url-test
@@ -374,7 +374,7 @@ ${makeGroup(others)}
       - "📉 Auto Fallback"
       - "💰 Crypto Services"
       - "🤖 AI Services"
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
@@ -402,7 +402,7 @@ ${makeGroup(others)}
       - "📉 Auto Fallback"
       - DIRECT
       - "🇭🇰 Hong Kong"
-      - "🇹🇼 Taiwan"
+      - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
