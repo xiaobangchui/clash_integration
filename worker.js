@@ -205,6 +205,7 @@ dns:
     - '+.binance.com'
     - '+.metamask.io'
     - '+.walletconnect.org'
+    - '+.telegram.org'
     - '*.lan'
     - '*.local'
     - 'ntp.*.com'
