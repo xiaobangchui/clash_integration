@@ -358,8 +358,12 @@ ${makeGroup(hk)}
     interval: 600
     tolerance: 100
     lazy: true
-    filter: "CF官方优选"              # 关键：正则匹配，包含这个关键词的节点都会自动进来
-    # 如果想更精确，可以写 filter: "CF官方优选\\d+" （匹配带数字的）
+    proxies:
+      - "CF官方优选1"
+      - "CF官方优选2"
+      - "CF官方优选3"
+      - "CF官方优选4"
+      - "CF官方优选5"
 
   - name: "🏮 Taiwan"
     type: url-test
