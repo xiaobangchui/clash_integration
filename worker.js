@@ -327,6 +327,18 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🏮 Taiwan"
 
+  - name: "🎵 TikTok"
+    type: url-test
+    url: "https://www.tiktok.com"
+    interval: 600
+    tolerance: 100
+    lazy: true
+    proxies:
+      - "🇸🇬 Singapore"
+      - "🇺🇸 USA"
+      - "🇯🇵 Japan"
+      - "🏮 Taiwan"
+
   - name: "🇭🇰 Hong Kong"
     type: url-test
     url: https://www.google.com/generate_204
@@ -566,6 +578,12 @@ rules:
   - GEOSITE,instagram,📲 Social Media
   
   - GEOIP,telegram,📲 Social Media
+
+  # 7. Tiktok
+  - DOMAIN-SUFFIX,tiktok.com,🎵 TikTok
+  - DOMAIN-SUFFIX,tiktokv.com,🎵 TikTok
+  - DOMAIN-SUFFIX,byteoversea.com,🎵 TikTok
+  - DOMAIN-SUFFIX,ttlivecdn.com,🎵 TikTok
 
   # 9. Apple & Microsoft (完全恢复原始)
   - GEOSITE,apple,🍎 Apple Services
