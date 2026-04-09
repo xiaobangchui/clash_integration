@@ -504,6 +504,28 @@ rules:
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
 
+# ===================================================
+  # 🎯 Gmail 专用：强制走美国节点分组 (提高同步稳定性)
+  # ===================================================
+  
+  # 1. 核心域名定向到美国
+  - DOMAIN-SUFFIX,gmail.com,🇺🇸 USA
+  - DOMAIN-SUFFIX,googlemail.com,🇺🇸 USA
+  - DOMAIN,imap.gmail.com,🇺🇸 USA
+  - DOMAIN,smtp.gmail.com,🇺🇸 USA
+  - DOMAIN,pop.gmail.com,🇺🇸 USA
+  - DOMAIN,accounts.google.com,🇺🇸 USA
+
+  # 2. Mac 邮件同步进程定向到美国 (仅限非中国 IP 流量)
+  - AND,((PROCESS-NAME,Mail),(NOT,((GEOIP,CN)))),🇺🇸 USA
+  - AND,((PROCESS-NAME,maild),(NOT,((GEOIP,CN)))),🇺🇸 USA
+
+  # 3. 邮件通用端口定向到美国 (仅限非中国 IP 流量)
+  # 这解决了 Apple Mail 某些情况下直接连接 IP 导致规则失效的问题
+  - AND,((OR,((DST-PORT,993),(DST-PORT,465),(DST-PORT,587))),(NOT,((GEOIP,CN)))),🇺🇸 USA
+
+  # ===================================================
+
   # ===================================================
   # 3. 微软/OneDrive/商店 专用修正策略 (完全恢复原始)
   # ===================================================
@@ -614,9 +636,6 @@ rules:
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
-  - DOMAIN-SUFFIX,gmail.com,🔰 Proxy Select
-  - DOMAIN,imap.gmail.com,🔰 Proxy Select
-  - DOMAIN,smtp.gmail.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,google.com,🔰 Proxy Select
 
   # 12. 直连 (完全恢复原始)
