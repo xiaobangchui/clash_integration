@@ -358,7 +358,7 @@ ${makeGroup(hk)}
     interval: 600
     tolerance: 100
     lazy: true
-    filter: "CF官方优选\\d*"
+    filter: "CF官方优选"
 
   - name: "🏮 Taiwan"
     type: url-test
