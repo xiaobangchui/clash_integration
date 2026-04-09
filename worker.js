@@ -358,12 +358,7 @@ ${makeGroup(hk)}
     interval: 600
     tolerance: 100
     lazy: true
-    proxies:
-      - "CF官方优选1"
-      - "CF官方优选2"
-      - "CF官方优选3"
-      - "CF官方优选4"
-      - "CF官方优选5"
+    filter: "CF官方优选\\d*"
 
   - name: "🏮 Taiwan"
     type: url-test
