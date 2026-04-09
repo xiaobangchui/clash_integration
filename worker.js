@@ -274,6 +274,7 @@ ${makeGroup(nodeNames)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
@@ -287,6 +288,7 @@ ${makeGroup(nodeNames)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
 
   - name: "🤖 AI Services"
     type: url-test
@@ -297,6 +299,7 @@ ${makeGroup(nodeNames)}
     proxies:
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
       - "🇺🇸 USA"
       - "🏮 Taiwan"
 
@@ -309,6 +312,7 @@ ${makeGroup(nodeNames)}
     proxies:
       - "🚀 Auto Speed"
       - "🇭🇰 Hong Kong"
+      - "🌩️ CF 优选新加坡"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
       - "🏮 Taiwan"
@@ -323,6 +327,7 @@ ${makeGroup(nodeNames)}
       - "🚀 Auto Speed"
       - "🇭🇰 Hong Kong"
       - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
       - "🇯🇵 Japan"
       - "🇺🇸 USA"
       - "🏮 Taiwan"
@@ -335,6 +340,7 @@ ${makeGroup(nodeNames)}
     lazy: true
     proxies:
       - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
       - "🇺🇸 USA"
       - "🇯🇵 Japan"
       - "🏮 Taiwan"
@@ -345,6 +351,15 @@ ${makeGroup(nodeNames)}
     interval: 600
     proxies:
 ${makeGroup(hk)}
+
+  - name: "🌩️ CF 优选新加坡"
+    type: url-test
+    url: https://www.google.com/generate_204
+    interval: 600
+    tolerance: 100
+    lazy: true
+    filter: "CF官方优选"              # 关键：正则匹配，包含这个关键词的节点都会自动进来
+    # 如果想更精确，可以写 filter: "CF官方优选\\d+" （匹配带数字的）
 
   - name: "🏮 Taiwan"
     type: url-test
@@ -391,6 +406,7 @@ ${makeGroup(others)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
+      - "🌩️ CF 优选新加坡"
       - "🌍 Others"
       - DIRECT
 
@@ -418,6 +434,7 @@ ${makeGroup(others)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
       - "🇺🇸 USA"
 
 rule-providers:
