@@ -494,6 +494,7 @@ rules:
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
   - DOMAIN,login.live.com,🔰 Proxy Select
+  - DOMAIN,shown.cc.cd,🔰 Proxy Select
   - DOMAIN-SUFFIX,onedrive.live.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,onedrive.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,1drv.ms,🔰 Proxy Select
