@@ -12,7 +12,8 @@ const CONFIG = {
   userAgent: "ClashMeta",
   fetchTimeout: 15000,
   excludeKeywords: ["5x"],
-  defaultToken: "25698" 
+  defaultToken: "25698",
+  fetchConcurrency: 8
 };
 
 export default {
@@ -41,9 +42,10 @@ export default {
     let airportDetails = [];     
     let summary = { used: 0, total: 0, expire: Infinity, minRemainGB: Infinity };
     const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
+    const fetchConcurrency = Math.max(1, parseInt(env.FETCH_CONCURRENCY, 10) || CONFIG.fetchConcurrency);
 
     // 2. 并发抓取
-    const fetchPromises = AIRPORT_URLS.map(async (subUrl, index) => {
+    const results = await mapWithConcurrency(AIRPORT_URLS, fetchConcurrency, async (subUrl, index) => {
       try {
         const resp = await fetch(subUrl, {
           headers: { "User-Agent": CONFIG.userAgent },
@@ -72,33 +74,70 @@ export default {
       } catch (e) { return null; }
     });
 
-    const results = await Promise.allSettled(fetchPromises);
-
     // 3. 解析节点
     for (const res of results) {
-      if (res.status === 'fulfilled' && res.value) {
-        const { text } = res.value;
-        const proxySection = text.split(/proxies:\s*\n/i)[1]?.split(/proxy-groups:|rules:|rule-providers:|dns:|tun:|sniffer:/i)[0];
-        if (proxySection) {
-          const lines = proxySection.split('\n');
-          let currentNode = "";
-          for (let line of lines) {
-            const trimmed = line.trimEnd();
-            if (!trimmed || trimmed.trimStart().startsWith('#')) continue;
-            if (trimmed.trimStart().startsWith('-')) {
-              if (currentNode) processNodeBlock(currentNode);
-              currentNode = trimmed;
-            } else {
-              if (currentNode) currentNode += "\n" + trimmed;
-            }
-          }
-          if (currentNode) processNodeBlock(currentNode);
+      if (res) {
+        const { text } = res;
+        const proxyBlocks = extractProxyBlocks(text);
+        for (const block of proxyBlocks) {
+          processNodeBlock(block);
         }
       }
     }
 
+    function mapWithConcurrency(items, limit, mapper) {
+      const results = new Array(items.length);
+      let nextIndex = 0;
+      const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (true) {
+          const current = nextIndex++;
+          if (current >= items.length) break;
+          results[current] = await mapper(items[current], current);
+        }
+      });
+      return Promise.all(workers).then(() => results);
+    }
+
+    function extractProxyBlocks(text) {
+      const lines = text.split('\n');
+      const blocks = [];
+      let inProxies = false;
+      let currentNode = "";
+
+      for (const line of lines) {
+        const trimmedRight = line.trimEnd();
+        const indent = line.match(/^\s*/)[0].length;
+
+        if (!inProxies) {
+          if (/^\s*proxies:\s*$/i.test(trimmedRight)) inProxies = true;
+          continue;
+        }
+
+        if (indent === 0 && /^[A-Za-z0-9_-]+:\s*$/.test(trimmedRight)) break;
+        if (!trimmedRight || trimmedRight.trimStart().startsWith('#')) continue;
+
+        if (/^\s*-\s+/.test(trimmedRight)) {
+          if (currentNode) blocks.push(currentNode);
+          currentNode = trimmedRight.trimStart();
+        } else if (currentNode) {
+          currentNode += "\n" + trimmedRight.trimStart();
+        }
+      }
+
+      if (currentNode) blocks.push(currentNode);
+      return blocks;
+    }
+
+    function quoteYamlString(value) {
+      return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+    }
+
+    function replaceNameField(raw, nextName) {
+      const nameFieldRegex = /(name:\s*)(?:"[^"]*"|'[^']*'|[^,\}\n]+)/;
+      return raw.replace(nameFieldRegex, `$1${quoteYamlString(nextName)}`);
+    }
+
     function processNodeBlock(raw) {
-      // 修复了正则中的一个潜在空括号问题
       const nameMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
       if (nameMatch) {
         let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
@@ -108,7 +147,7 @@ export default {
         let count = nameCountMap.get(originalName) || 0;
         if (count > 0) {
           finalName = `${originalName} [${count}]`;
-          raw = raw.replace(new RegExp(originalName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), finalName);
+          raw = replaceNameField(raw, finalName);
         }
         nameCountMap.set(originalName, count + 1);
         nodes.push("  " + raw.trim());
@@ -117,7 +156,7 @@ export default {
     }
 
     // 4. 生成地区分组
-    const makeGroup = (list) => list.length ? list.map(n => `      - "${n}"`).join("\n") : "      - DIRECT";
+    const makeGroup = (list) => list.length ? list.map(n => `      - ${quoteYamlString(n)}`).join("\n") : "      - DIRECT";
     const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
     const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
     const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
@@ -500,6 +539,7 @@ rules:
   - DOMAIN-SUFFIX,local,DIRECT
 
   # 2. 阻断 UDP 443 (防 QUIC)
+  # 说明：这是“稳定优先”策略，会牺牲部分 App 的 QUIC 性能。
   - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
@@ -520,9 +560,9 @@ rules:
   - AND,((PROCESS-NAME,Mail),(NOT,((GEOIP,CN)))),🇺🇸 USA
   - AND,((PROCESS-NAME,maild),(NOT,((GEOIP,CN)))),🇺🇸 USA
 
-  # 3. 邮件通用端口定向到美国 (仅限非中国 IP 流量)
-  # 这解决了 Apple Mail 某些情况下直接连接 IP 导致规则失效的问题
-  - AND,((OR,((DST-PORT,993),(DST-PORT,465),(DST-PORT,587))),(NOT,((GEOIP,CN)))),🇺🇸 USA
+  # 3. 邮件通用端口定向到美国 (仅桌面端 Mail 进程 + 非中国 IP)
+  # 收窄范围，避免误伤其他邮件服务或非邮件应用。
+  - AND,((OR,((PROCESS-NAME,Mail),(PROCESS-NAME,maild))),(OR,((DST-PORT,993),(DST-PORT,465),(DST-PORT,587))),(NOT,((GEOIP,CN)))),🇺🇸 USA
 
   # ===================================================
 
@@ -539,6 +579,7 @@ rules:
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,neat-reader.com,🔰 Proxy Select
 
+  # 说明：PROCESS-NAME 规则主要对桌面端有效，移动端通常不生效。
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
@@ -563,8 +604,6 @@ rules:
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
   - GEOSITE,okx,💰 Crypto Services
   - GEOSITE,binance,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okcdn.com,💰 Crypto Services
   - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
   - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
   - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
@@ -593,7 +632,6 @@ rules:
   - DOMAIN-SUFFIX,auth0.com,🤖 AI Services
   - DOMAIN-SUFFIX,anthropic.com,🤖 AI Services
   - DOMAIN-SUFFIX,claude.ai,🤖 AI Services
-  - DOMAIN-SUFFIX,gemini.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,bard.google.com,🤖 AI Services
   - DOMAIN-SUFFIX,grok.com,🤖 AI Services
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
