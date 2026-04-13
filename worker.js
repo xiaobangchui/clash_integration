@@ -20,6 +20,9 @@ const CONFIG = {
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
+    const notifyParam = (url.searchParams.get("notify") || "").toLowerCase();
+    const shouldNotifyTg = notifyParam ? ["1", "true", "yes", "on"].includes(notifyParam) : true;
+    const triggerSource = url.searchParams.get("source") || "manual";
     
     // 1. 安全校验
     const accessToken = env.TOKEN || CONFIG.defaultToken;
@@ -28,66 +31,71 @@ export default {
     }
 
     if (url.pathname === "/health") return new Response("OK");
-    const shouldNotifyTg = ["1", "true", "yes"].includes((url.searchParams.get("notify") || "").toLowerCase());
+    try {
+      const AIRPORT_URLS = env.SUB_URLS 
+        ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
+        : [];
 
-    const AIRPORT_URLS = env.SUB_URLS 
-      ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
-      : [];
-
-    if (AIRPORT_URLS.length === 0) {
-      return new Response("Error: SUB_URLS is empty.", { status: 500 });
-    }
-
-    let nodes = [];
-    let nodeNames = [];
-    let nameCountMap = new Map(); 
-    let airportDetails = [];     
-    let summary = { used: 0, total: 0, expire: Infinity, minRemainGB: Infinity };
-    const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
-    const fetchConcurrency = Math.max(1, parseInt(env.FETCH_CONCURRENCY, 10) || CONFIG.fetchConcurrency);
-
-    // 2. 并发抓取
-    const results = await mapWithConcurrency(AIRPORT_URLS, fetchConcurrency, async (subUrl, index) => {
-      try {
-        const resp = await fetch(subUrl, {
-          headers: { "User-Agent": CONFIG.userAgent },
-          signal: AbortSignal.timeout(CONFIG.fetchTimeout)
-        });
-        if (!resp.ok) return null;
-
-        const infoHeader = resp.headers.get("Subscription-Userinfo");
-        if (infoHeader) {
-          const info = {};
-          infoHeader.split(';').forEach(p => {
-            const [k, v] = p.trim().split('=');
-            if (k && v) info[k.trim()] = parseInt(v) || 0;
-          });
-          const remain = ((info.total - (info.upload + info.download)) / (1024 ** 3)).toFixed(1);
-          const exp = info.expire ? new Date(info.expire * 1000).toLocaleDateString() : "长期";
-          airportDetails.push(`# [机场${index + 1}] 剩 ${remain}GB | 到期: ${exp}`);
-          
-          summary.used += (info.upload + info.download);
-          summary.total += info.total;
-          if (info.expire && info.expire < summary.expire && info.expire > 0) summary.expire = info.expire;
+      if (AIRPORT_URLS.length === 0) {
+        if (shouldNotifyTg) {
+          ctx.waitUntil(sendTelegramErrorNotification(env, {
+            source: triggerSource,
+            message: "SUB_URLS is empty"
+          }));
         }
+        return new Response("Error: SUB_URLS is empty.", { status: 500 });
+      }
 
-        const text = await resp.text();
-        return { text };
-      } catch (e) { return null; }
-    });
-    const sourceSuccess = results.filter(Boolean).length;
-    const sourceFailed = AIRPORT_URLS.length - sourceSuccess;
+      let nodes = [];
+      let nodeNames = [];
+      let nameCountMap = new Map(); 
+      let airportDetails = [];     
+      let summary = { used: 0, total: 0, expire: Infinity, minRemainGB: Infinity };
+      const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
+      const fetchConcurrency = Math.max(1, parseInt(env.FETCH_CONCURRENCY, 10) || CONFIG.fetchConcurrency);
 
-    // 3. 解析节点
-    for (const res of results) {
-      if (res) {
-        const { text } = res;
-        const proxyBlocks = extractProxyBlocks(text);
-        for (const block of proxyBlocks) {
-          processNodeBlock(block);
+      // 2. 并发抓取
+      const results = await mapWithConcurrency(AIRPORT_URLS, fetchConcurrency, async (subUrl, index) => {
+        try {
+          const resp = await fetch(subUrl, {
+            headers: { "User-Agent": CONFIG.userAgent },
+            signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+          });
+          if (!resp.ok) return null;
+
+          const infoHeader = resp.headers.get("Subscription-Userinfo");
+          if (infoHeader) {
+            const info = {};
+            infoHeader.split(';').forEach(p => {
+              const [k, v] = p.trim().split('=');
+              if (k && v) info[k.trim()] = parseInt(v) || 0;
+            });
+            const remain = ((info.total - (info.upload + info.download)) / (1024 ** 3)).toFixed(1);
+            const exp = info.expire ? new Date(info.expire * 1000).toLocaleDateString() : "长期";
+            airportDetails.push(`# [机场${index + 1}] 剩 ${remain}GB | 到期: ${exp}`);
+            
+            summary.used += (info.upload + info.download);
+            summary.total += info.total;
+            if (info.expire && info.expire < summary.expire && info.expire > 0) summary.expire = info.expire;
+          }
+
+          const text = await resp.text();
+          return { text };
+        } catch (e) { return null; }
+      });
+      const sourceSuccess = results.filter(Boolean).length;
+      const sourceFailed = AIRPORT_URLS.length - sourceSuccess;
+
+      // 3. 解析节点
+      for (const res of results) {
+        if (res) {
+          const { text } = res;
+          const proxyBlocks = extractProxyBlocks(text);
+          for (const block of proxyBlocks) {
+            processNodeBlock(block);
+          }
         }
       }
-    }
 
     function mapWithConcurrency(items, limit, mapper) {
       const results = new Array(items.length);
@@ -159,19 +167,19 @@ export default {
       }
     }
 
-    // 4. 生成地区分组
-    const makeGroup = (list) => list.length ? list.map(n => `      - ${quoteYamlString(n)}`).join("\n") : "      - DIRECT";
-    const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
-    const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
-    const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
-    const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
-    const usa = nodeNames.filter(n => /(US|United|States|America|美|美国|🇺🇸)/i.test(n));
-    const cflare = nodeNames.filter(n => /(CF官方优选)/i.test(n));
-    const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
+      // 4. 生成地区分组
+      const makeGroup = (list) => list.length ? list.map(n => `      - ${quoteYamlString(n)}`).join("\n") : "      - DIRECT";
+      const hk = nodeNames.filter(n => /(HK|Hong|Kong|港|香港)/i.test(n));
+      const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
+      const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
+      const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
+      const usa = nodeNames.filter(n => /(US|United|States|America|美|美国|🇺🇸)/i.test(n));
+      const cflare = nodeNames.filter(n => /(CF官方优选)/i.test(n));
+      const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
 
-    const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
-    const totalGB = (summary.total / (1024 ** 3)).toFixed(1);
-    const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
+      const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
+      const totalGB = (summary.total / (1024 ** 3)).toFixed(1);
+      const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
 
     // 5. 最终 YAML (融合原始完整规则 + 搜索优化修复)
     const yaml = `
@@ -698,27 +706,37 @@ rules:
   - MATCH,🐟 Final Select
 `;
 
-    if (shouldNotifyTg) {
-      ctx.waitUntil(
-        sendTelegramNotification(env, {
-          nodeCount: nodeNames.length,
-          sourceTotal: AIRPORT_URLS.length,
-          sourceSuccess,
-          sourceFailed,
-          usedGB,
-          totalGB,
-          expireDate
-        })
-      );
-    }
-
-    return new Response(yaml, {
-      headers: {
-        "Content-Type": "text/yaml; charset=utf-8",
-        "Subscription-Userinfo": `upload=0;download=${summary.used};total=${summary.total};expire=${summary.expire}`,
-        "Content-Disposition": "attachment; filename=clash_full_fixed.yaml"
+      if (shouldNotifyTg) {
+        ctx.waitUntil(
+          sendTelegramNotification(env, {
+            source: triggerSource,
+            nodeCount: nodeNames.length,
+            sourceTotal: AIRPORT_URLS.length,
+            sourceSuccess,
+            sourceFailed,
+            usedGB,
+            totalGB,
+            expireDate
+          })
+        );
       }
-    });
+
+      return new Response(yaml, {
+        headers: {
+          "Content-Type": "text/yaml; charset=utf-8",
+          "Subscription-Userinfo": `upload=0;download=${summary.used};total=${summary.total};expire=${summary.expire}`,
+          "Content-Disposition": "attachment; filename=clash_full_fixed.yaml"
+        }
+      });
+    } catch (error) {
+      if (shouldNotifyTg) {
+        ctx.waitUntil(sendTelegramErrorNotification(env, {
+          source: triggerSource,
+          message: error instanceof Error ? error.message : String(error)
+        }));
+      }
+      return new Response("Internal Server Error", { status: 500 });
+    }
   },
 
   async scheduled(event, env, ctx) {
@@ -736,6 +754,7 @@ async function sendTelegramNotification(env, payload) {
 
   const lines = [
     "Clash 订阅自动更新完成",
+    `触发来源: ${payload.source || "unknown"}`,
     `节点总数: ${payload.nodeCount}`,
     `源站成功/失败: ${payload.sourceSuccess}/${payload.sourceFailed} (总 ${payload.sourceTotal})`,
     `流量汇总: ${payload.usedGB}GB / ${payload.totalGB}GB`,
@@ -747,6 +766,30 @@ async function sendTelegramNotification(env, payload) {
   }
 
   const text = lines.join("\n").slice(0, 3900);
+  const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_notification: ["1", "true", "yes"].includes(String(env.TG_SILENT || "").toLowerCase())
+    }),
+    signal: AbortSignal.timeout(CONFIG.telegramTimeout)
+  }).catch(() => null);
+}
+
+async function sendTelegramErrorNotification(env, payload) {
+  const botToken = env.TG_BOT_TOKEN;
+  const chatId = env.TG_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  const text = [
+    "Clash 订阅更新失败",
+    `触发来源: ${payload.source || "unknown"}`,
+    `错误信息: ${payload.message || "unknown error"}`
+  ].join("\n").slice(0, 3900);
+
   const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
   await fetch(apiUrl, {
     method: "POST",
