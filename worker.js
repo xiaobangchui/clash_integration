@@ -737,13 +737,6 @@ rules:
       }
       return new Response("Internal Server Error", { status: 500 });
     }
-  },
-
-  async scheduled(event, env, ctx) {
-    const token = env.TOKEN || CONFIG.defaultToken;
-    const triggerUrl = `https://scheduled.internal/?token=${encodeURIComponent(token)}&notify=1&source=cron`;
-    // 复用现有 fetch 处理逻辑，避免额外配置 WORKER_URL。
-    ctx.waitUntil(this.fetch(new Request(triggerUrl), env, ctx));
   }
 };
 
