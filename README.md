@@ -1,97 +1,182 @@
 # clash_integration
 
-Cloudflare Worker 多订阅整合脚本。  
-采用 GitHub Actions 自动部署，`SUB_URLS` 与 `TOKEN` 通过 GitHub Secrets 注入，避免在仓库明文保存。
+Cloudflare Worker 多订阅整合脚本，支持：
 
-## 部署步骤
+- 聚合多个上游订阅并实时生成 Clash 配置
+- 手动更新/客户端自动更新触发
+- Telegram 成功与失败通知
 
-1. 修改 `worker.js` 或 `wrangler.toml` 后 push 到 `main`。
-2. GitHub Actions 读取 Secrets，动态写入 `wrangler.toml` 的 `[vars]` 后部署。
-3. Cloudflare Worker 使用 `TG_BOT_TOKEN`、`TG_CHAT_ID` 发送更新通知。
+本项目采用 **GitHub Actions 自动部署**，敏感信息通过 Secrets 注入，不在仓库明文保存。
 
-## 必要配置
+## 从头部署（完整步骤）
 
-### GitHub Repository Secrets（Actions 用）
+## 1) 准备代码仓库
 
-- `CF_API_TOKEN`：Cloudflare API Token（用于部署）
-- `CF_ACCOUNT_ID`：Cloudflare Account ID
-- `SUB_URLS`：多条订阅链接（支持多行）
-- `TOKEN`：访问鉴权 token（可选，不填时默认 `25698`）
+1. 创建或使用你自己的 GitHub 仓库。
+2. 把本项目代码放入仓库（保持包含 `worker.js`、`wrangler.toml`、`.github/workflows/deploy.yml`）。
+3. 确认默认分支是 `main`（workflow 监听 `main` push）。
 
-### Cloudflare Worker Secrets（运行时用）
-
-- `TG_BOT_TOKEN`
-- `TG_CHAT_ID`
-- `TG_SILENT`（可选，静默通知）
-
-## 重要安全说明
-
-- 不要在 `wrangler.toml` 提交真实 `SUB_URLS` 或 token。
-- 如果历史提交中出现过真实订阅链接，请重写 Git 历史后再继续使用。
-# clash_integration
-
-Cloudflare Worker 多订阅整合脚本，按请求实时生成 Clash 配置，支持 Telegram 成功/失败通知。
-
-## 一、项目结构
-
-- `worker.js`：核心逻辑（抓取订阅、解析节点、生成 YAML、发送 TG 通知）
-- `wrangler.toml`：Worker 基础配置与非敏感变量（如 `SUB_URLS`、`TOKEN`）
-- `.github/workflows/deploy.yml`：推送到 `main` 后自动部署到 Cloudflare Workers
-
-## 二、首次部署（推荐：Git 自动部署）
-
-### 1) Fork 或克隆仓库后，修改配置文件
+## 2) 修改基础配置文件（非敏感）
 
 编辑 `wrangler.toml`：
 
-- 设置 `name`（Worker 名称）
-- 在 `[vars]` 中维护：
-  - `TOKEN`（访问鉴权用）
-  - `SUB_URLS`（多条订阅链接，按行写）
+- `name`：改成你的 Worker 名称（例如 `my-clash-worker`）
+- `main`：保持 `worker.js`
+- `compatibility_date`：可保持当前值
+- `[vars]`：保持占位，不要填真实订阅和真实 token
 
-> `SUB_URLS` 支持多行，脚本会自动解析。
+> 注意：真实 `SUB_URLS` 和 `TOKEN` 不写在文件里，后面放 GitHub Secrets。
 
-### 2) 在 GitHub 仓库设置 Actions Secrets（部署必需）
+## 3) 配置 GitHub Actions 部署凭据
 
-进入：`Repository -> Settings -> Secrets and variables -> Actions -> Repository secrets`
+进入仓库页面：
+`Settings -> Secrets and variables -> Actions -> Repository secrets`
 
-添加：
+需要添加 4 个 Secret：
 
-- `CF_API_TOKEN`
-- `CF_ACCOUNT_ID`
+### 3.1 `CF_API_TOKEN`
 
-> 这两个只用于 GitHub Actions 部署，不写入代码。
+作用：让 GitHub Actions 有权限调用 Cloudflare 部署 Worker。  
+获取方式：
 
-### 3) 在 Cloudflare Worker 设置 Secrets（通知必需）
+1. 打开 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. 点击右上角头像 -> `My Profile`
+3. 进入 `API Tokens`
+4. 点击 `Create Token`
+5. 选择 Workers 相关模板（或自定义最小权限：Workers 写入 + Account 读取）
+6. 创建后复制 token，写入 GitHub Secret `CF_API_TOKEN`
 
-进入：`Cloudflare Dashboard -> Workers & Pages -> 你的 Worker -> Settings -> Variables and Secrets`
+### 3.2 `CF_ACCOUNT_ID`
 
-添加：
+作用：指定部署到哪个 Cloudflare 账号。  
+获取方式：
 
-- `TG_BOT_TOKEN`
-- `TG_CHAT_ID`
+1. 打开 [Cloudflare Dashboard](https://dash.cloudflare.com/)
+2. 进入任意账号主页
+3. 在账号信息区域找到 `Account ID`
+4. 复制后写入 GitHub Secret `CF_ACCOUNT_ID`
 
-可选：
+### 3.3 `SUB_URLS`
 
-- `TG_SILENT`（静默通知开关）
+作用：上游订阅源列表（核心数据）。  
+设置方式：
 
-### 4) 推送到 `main` 触发自动部署
+1. 在 GitHub 新建 Secret：`SUB_URLS`
+2. 值填写为多行，每行一个订阅链接
+3. 不要加引号，不要带多余空格
+
+示例格式（仅格式示意）：
+
+```text
+https://example-a.com/sub?token=xxx
+https://example-b.com/sub?token=yyy
+https://example-c.com/sub?token=zzz
+```
+
+### 3.4 `TOKEN`（建议配置）
+
+作用：你的聚合订阅访问口令（`?token=...`）。  
+设置方式：
+
+1. 在 GitHub 新建 Secret：`TOKEN`
+2. 设置一段你自己的口令（尽量复杂）
+
+> 不配置时会回退默认值 `25698`，不建议长期使用默认值。
+
+## 4) 配置 Cloudflare Worker 的 Telegram Secrets
+
+进入：
+`Cloudflare Dashboard -> Workers & Pages -> 你的 Worker -> Settings -> Variables and Secrets`
+
+添加以下 Secrets：
+
+### 4.1 `TG_BOT_TOKEN`
+
+作用：Worker 调用 Telegram Bot API 发消息。  
+获取方式：
+
+1. 打开 Telegram，搜索 `@BotFather`
+2. 发送 `/newbot`，按提示创建机器人
+3. 创建成功后获得 bot token
+4. 将该 token 填入 Cloudflare Secret `TG_BOT_TOKEN`
+
+### 4.2 `TG_CHAT_ID`
+
+作用：指定消息发到哪个聊天（私聊或群）。  
+获取方式（私聊）：
+
+1. 给你的 bot 发送 `/start`
+2. 浏览器访问：
+   `https://api.telegram.org/bot<你的TG_BOT_TOKEN>/getUpdates`
+3. 在返回 JSON 中找到 `chat.id`
+4. 把该值填入 Cloudflare Secret `TG_CHAT_ID`
+
+获取方式（群聊）：
+
+1. 把 bot 拉进群
+2. 在群里发送任意消息
+3. 访问同一个 `getUpdates` URL
+4. 找到该群消息对应的 `chat.id`（通常为负数）
+5. 填入 `TG_CHAT_ID`
+
+### 4.3 `TG_SILENT`（可选）
+
+作用：是否静默通知。  
+设置方式：
+
+- 设为 `true` / `1` / `yes`：静默推送
+- 不设或其他值：普通推送
+
+## 5) 首次触发自动部署
+
+在本地仓库执行：
 
 ```bash
 git add .
-git commit -m "update worker config"
+git commit -m "initial deploy setup"
 git push origin main
 ```
 
-部署成功后，访问你的 Worker 地址并带上 `token` 参数即可使用。
+然后到 GitHub：
 
-## 三、后续重新部署怎么做
+1. 打开 `Actions`
+2. 进入 `Deploy to Cloudflare Workers`
+3. 确认任务成功（绿色）
 
-以后只要按下面流程：
+## 6) 获取订阅链接并导入 Clash
 
-1. 修改 `worker.js` 或 `wrangler.toml`
-2. 提交并推送到 `main`
-3. 等待 GitHub Actions 完成部署
+获取 Worker 地址：
+
+1. 在 Actions 的 deploy 日志里查看 workers.dev 地址  
+   或在 Cloudflare Worker 页面查看域名
+2. 拼接订阅 URL：
+   `https://你的worker域名/?token=你的TOKEN`
+
+导入 Clash Verge：
+
+1. 打开 Clash Verge -> `Profiles`
+2. 新增订阅，填入上面的 URL
+3. 保存后点击一次手动更新
+
+## 7) 验证是否部署成功
+
+### 7.1 浏览器验证
+
+打开：
+
+- `https://你的worker域名/health`（应返回 `OK`）
+- `https://你的worker域名/?token=你的TOKEN`（应返回 YAML 内容）
+
+### 7.2 Telegram 验证
+
+手动触发一次订阅更新后，TG 应收到：
+
+- 成功消息（节点数、成功/失败源站、流量等）
+- 若失败会收到错误通知
+
+## 8) 后续日常更新流程
+
+以后每次修改代码都一样：
 
 ```bash
 git add .
@@ -99,140 +184,30 @@ git commit -m "your change"
 git push origin main
 ```
 
-> 本项目当前以 `wrangler.toml` 为订阅配置单一来源。  
-> 需要增减订阅地址时，只改 `wrangler.toml` 的 `SUB_URLS`。
+然后看 Actions 部署结果。
 
-## 四、变量放置规则（重要）
+需要改订阅源时：
 
-### 放在 `wrangler.toml`（可跟随代码）
+- 只改 GitHub Secret `SUB_URLS`
+- 改完后重新触发部署（重新运行 workflow 或再 push 一次）
 
-- `SUB_URLS`
-- `TOKEN`
+## 9) 常见问题排查
 
-### 放在 Cloudflare Secrets（敏感信息）
+- `Forbidden: Access Token Required.`
+  - 检查订阅 URL 是否带 `?token=...`
+  - 检查 `TOKEN` Secret 是否与你使用的一致
 
-- `TG_BOT_TOKEN`
-- `TG_CHAT_ID`
-- `TG_SILENT`（可选）
+- `Error: SUB_URLS is empty.`
+  - 检查 GitHub Secret `SUB_URLS` 是否已配置
+  - 确认 Actions 部署是否成功
 
-### 放在 GitHub Secrets（仅部署）
+- 没有 TG 通知
+  - 检查 Cloudflare Secrets：`TG_BOT_TOKEN`、`TG_CHAT_ID`
+  - 私聊场景确认 bot 已 `/start`
+  - 群聊场景确认 bot 仍在群内且有权限
 
-- `CF_API_TOKEN`
-- `CF_ACCOUNT_ID`
+## 10) 安全建议（重要）
 
-## 五、部署前信息清单（含获取方式）
-
-以下信息建议先准备完，再开始部署。
-
-### 1) `CF_API_TOKEN`（GitHub Secret）
-
-用途：GitHub Actions 调用 Cloudflare API 完成部署。  
-获取方式：
-
-1. 打开 Cloudflare Dashboard
-2. 进入 `My Profile -> API Tokens`
-3. 点击 `Create Token`
-4. 选择 Workers 相关模板（或自定义最小权限：Workers 脚本写入 + Account 读取）
-5. 生成后复制 Token，只在创建时可见
-6. 到 GitHub 仓库 `Settings -> Secrets and variables -> Actions` 新建 `CF_API_TOKEN`
-
-### 2) `CF_ACCOUNT_ID`（GitHub Secret）
-
-用途：告诉部署动作目标是哪个 Cloudflare 账号。  
-获取方式（任一方式）：
-
-- Cloudflare Dashboard 主页右侧 Account 信息区域可见 `Account ID`
-- 或进入 `Workers & Pages` 任意 Worker 页面查看账号信息
-
-复制后写入 GitHub Actions Secret：`CF_ACCOUNT_ID`。
-
-### 3) `TG_BOT_TOKEN`（Cloudflare Secret）
-
-用途：Worker 调用 Telegram Bot API 发通知。  
-获取方式：
-
-1. 在 Telegram 搜索 `@BotFather`
-2. 发送 `/newbot` 并按提示创建机器人
-3. BotFather 返回一串 token（即 `TG_BOT_TOKEN`）
-4. 到 Cloudflare Worker 的 `Variables and Secrets` 添加该 Secret
-
-### 4) `TG_CHAT_ID`（Cloudflare Secret）
-
-用途：指定消息发给哪个聊天（私聊/群组）。  
-获取方式：
-
-- **私聊场景**
-  1. 先给你的 Bot 发 `/start`
-  2. 浏览器访问：`https://api.telegram.org/bot<你的BotToken>/getUpdates`
-  3. 在返回 JSON 中找到 `chat.id`（你的 `TG_CHAT_ID`）
-
-- **群聊场景**
-  1. 先把 Bot 拉进目标群
-  2. 在群里发一条消息（可发 `/start`）
-  3. 同样访问 `getUpdates` 查 `chat.id`（群一般是负数）
-
-拿到后写入 Cloudflare Secret：`TG_CHAT_ID`。
-
-### 5) `TOKEN`（wrangler.toml）
-
-用途：保护订阅入口，防止未授权访问。  
-设置方式：
-
-- 在 `wrangler.toml` 的 `[vars]` 中填写 `TOKEN`
-- 访问时必须带：`?token=你的TOKEN`
-
-### 6) `SUB_URLS`（wrangler.toml）
-
-用途：上游机场/订阅源列表。  
-设置方式：
-
-- 在 `wrangler.toml` 的 `[vars]` 中多行填写 `SUB_URLS`
-- 每行一条订阅地址
-- 以后增减地址时只改这里
-
-### 7) Worker 访问地址（用于导入 Clash）
-
-用途：Clash 订阅链接入口。  
-获取方式：
-
-1. 推送代码后，打开 GitHub Actions 部署记录
-2. 在 deploy 日志中找到 workers.dev 地址
-3. 拼接最终订阅链接：`https://你的worker域名/?token=你的TOKEN`
-
-## 六、更新触发机制说明
-
-- 手动更新：访问订阅链接（带 `token`）
-- 软件自动更新：由 Clash 客户端按其订阅更新策略触发请求
-- 当前项目不启用 Cloudflare Cron 定时任务（无 `scheduled` 自动触发）
-
-## 七、Clash Verge 自动更新设置（客户端侧）
-
-1. 打开 Clash Verge
-2. 进入 `Profiles`（订阅管理）
-3. 选中你的 Worker 订阅
-4. 打开 `Auto Update`（自动更新）
-5. 设置更新间隔（例如 6h/12h）
-6. 保存后观察下次更新时间是否变化
-
-> 手动更新与自动更新都会请求同一条订阅链接，走同一套 Worker 逻辑。
-
-## 八、常见问题排查
-
-- 返回 `Forbidden: Access Token Required.`
-  - 检查链接中是否携带 `?token=...`
-  - 检查 `TOKEN` 是否与链接一致
-
-- 返回 `Error: SUB_URLS is empty.`
-  - 检查 `wrangler.toml` 中 `SUB_URLS` 是否有有效链接
-  - 确认改动已推送并部署成功
-
-- 没有 Telegram 通知
-  - 检查 Cloudflare Secrets 中 `TG_BOT_TOKEN`、`TG_CHAT_ID` 是否已设置
-  - 确认 Bot 与目标 chat 已建立会话（私聊 `/start` 或已在群内）
-  - 若为群聊，确认 Bot 仍在群中且有发言权限
-
-## 九、安全建议
-
-- 不要在仓库中提交任何真实密钥
-- 敏感值统一放 Cloudflare/GitHub Secrets
-- 定期轮换 `TOKEN` 与 Telegram Bot 凭据
+- 不要把真实订阅链接写进仓库文件
+- 不要在截图、日志、issue 中暴露 token
+- 仓库即使设为私有，也建议坚持使用 Secrets
