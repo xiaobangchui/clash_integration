@@ -1,0 +1,7 @@
+name = "clash-sub"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+TOKEN = "REPLACE_IN_GITHUB_SECRET"
+SUB_URLS = "REPLACE_IN_GITHUB_SECRET"

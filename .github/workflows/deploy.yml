@@ -11,7 +11,22 @@ jobs:
     name: Deploy
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Inject Secrets into Config
+        env:
+          THE_URLS: ${{ secrets.SUB_URLS }}
+          THE_TOKEN: ${{ secrets.TOKEN }}
+        run: |
+          CLEAN_URLS=$(echo "$THE_URLS" | tr '\n' ',' | tr -d '\r')
+          CLEAN_TOKEN=$(echo "${THE_TOKEN:-25698}" | tr -d '\r')
+          sed -i '/^\[vars\]/,$d' wrangler.toml
+          {
+            echo ""
+            echo "[vars]"
+            echo "TOKEN = \"$CLEAN_TOKEN\""
+            echo "SUB_URLS = \"$CLEAN_URLS\""
+          } >> wrangler.toml
+
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
         with:
