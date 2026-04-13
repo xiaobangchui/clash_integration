@@ -12,20 +12,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       
-      # [关键步骤] 注入变量：把换行符替换为逗号，防止链接粘连 分支测试
+      # [关键步骤] 注入变量：覆盖 vars 段，避免重复 [vars] 导致 TOML 解析失败
       - name: Inject Secrets into Config
         env:
           The_Url: ${{ secrets.SUB_URLS }}
+          The_Token: ${{ secrets.TOKEN }}
         run: |
           # 1. 把换行符(\n)替换成逗号(,)
           # 2. 删除回车符(\r)
           # 3. 删除可能存在的首尾空格
           CLEAN_URL=$(echo "$The_Url" | tr '\n' ',' | tr -d '\r')
+          CLEAN_TOKEN=$(echo "${The_Token:-25698}" | tr -d '\r')
           
-          # 4. 写入到 wrangler.toml
-          echo "" >> wrangler.toml
-          echo "[vars]" >> wrangler.toml
-          echo "SUB_URLS = \"$CLEAN_URL\"" >> wrangler.toml
+          # 4. 删除旧 [vars] 段（如果有），再写入新值
+          sed -i '/^\[vars\]/,$d' wrangler.toml
+          {
+            echo ""
+            echo "[vars]"
+            echo "TOKEN = \"$CLEAN_TOKEN\""
+            echo "SUB_URLS = \"$CLEAN_URL\""
+          } >> wrangler.toml
 
       - name: Deploy to Cloudflare Workers
         uses: cloudflare/wrangler-action@v3
