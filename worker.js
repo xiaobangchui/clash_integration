@@ -13,7 +13,8 @@ const CONFIG = {
   fetchTimeout: 15000,
   excludeKeywords: ["5x"],
   defaultToken: "25698",
-  fetchConcurrency: 8
+  fetchConcurrency: 8,
+  telegramTimeout: 10000
 };
 
 export default {
@@ -27,6 +28,7 @@ export default {
     }
 
     if (url.pathname === "/health") return new Response("OK");
+    const shouldNotifyTg = ["1", "true", "yes"].includes((url.searchParams.get("notify") || "").toLowerCase());
 
     const AIRPORT_URLS = env.SUB_URLS 
       ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
@@ -73,6 +75,8 @@ export default {
         return { text };
       } catch (e) { return null; }
     });
+    const sourceSuccess = results.filter(Boolean).length;
+    const sourceFailed = AIRPORT_URLS.length - sourceSuccess;
 
     // 3. 解析节点
     for (const res of results) {
@@ -694,6 +698,20 @@ rules:
   - MATCH,🐟 Final Select
 `;
 
+    if (shouldNotifyTg) {
+      ctx.waitUntil(
+        sendTelegramNotification(env, {
+          nodeCount: nodeNames.length,
+          sourceTotal: AIRPORT_URLS.length,
+          sourceSuccess,
+          sourceFailed,
+          usedGB,
+          totalGB,
+          expireDate
+        })
+      );
+    }
+
     return new Response(yaml, {
       headers: {
         "Content-Type": "text/yaml; charset=utf-8",
@@ -701,5 +719,43 @@ rules:
         "Content-Disposition": "attachment; filename=clash_full_fixed.yaml"
       }
     });
+  },
+
+  async scheduled(event, env, ctx) {
+    const token = env.TOKEN || CONFIG.defaultToken;
+    const triggerUrl = `https://scheduled.internal/?token=${encodeURIComponent(token)}&notify=1&source=cron`;
+    // 复用现有 fetch 处理逻辑，避免额外配置 WORKER_URL。
+    ctx.waitUntil(this.fetch(new Request(triggerUrl), env, ctx));
   }
 };
+
+async function sendTelegramNotification(env, payload) {
+  const botToken = env.TG_BOT_TOKEN;
+  const chatId = env.TG_CHAT_ID;
+  if (!botToken || !chatId) return;
+
+  const lines = [
+    "Clash 订阅自动更新完成",
+    `节点总数: ${payload.nodeCount}`,
+    `源站成功/失败: ${payload.sourceSuccess}/${payload.sourceFailed} (总 ${payload.sourceTotal})`,
+    `流量汇总: ${payload.usedGB}GB / ${payload.totalGB}GB`,
+    `最早到期: ${payload.expireDate}`
+  ];
+
+  if (env.WORKER_URL) {
+    lines.push(`订阅地址: ${env.WORKER_URL.replace(/\/+$/, "")}/?token=${env.TOKEN || CONFIG.defaultToken}`);
+  }
+
+  const text = lines.join("\n").slice(0, 3900);
+  const apiUrl = `https://api.telegram.org/bot${botToken}/sendMessage`;
+  await fetch(apiUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      disable_notification: ["1", "true", "yes"].includes(String(env.TG_SILENT || "").toLowerCase())
+    }),
+    signal: AbortSignal.timeout(CONFIG.telegramTimeout)
+  }).catch(() => null);
+}
