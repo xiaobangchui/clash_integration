@@ -286,6 +286,7 @@ dns:
 
   default-nameserver:
     - 1.1.1.1
+    - 223.5.5.5
     - 8.8.8.8
   
   nameserver:
@@ -314,10 +315,19 @@ proxies:
 ${nodes.join("\n")}
 
 proxy-groups:
+  - name: "🤖 AI Services"
+    type: select
+    proxies:
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
+      - "🇺🇸 USA"
+      - "🏮 Taiwan"
+
   - name: "🚀 Auto Speed"
     type: url-test
     url: https://cp.cloudflare.com/generate_204
-    interval: 600
+    interval: 1200
     tolerance: 100
     lazy: true
     proxies:
@@ -337,19 +347,10 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  - name: "🤖 AI Services"
-    type: select
-    proxies:
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
-      - "🇺🇸 USA"
-      - "🏮 Taiwan"
-
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
-    interval: 600
+    interval: 1200
     tolerance: 100
     lazy: true
     proxies:
@@ -361,7 +362,7 @@ ${makeGroup(nodeNames)}
   - name: "🎬 Media & Social"
     type: url-test
     url: "https://www.youtube.com/generate_204"
-    interval: 600
+    interval: 1200
     tolerance: 100
     lazy: true
     proxies:
@@ -376,7 +377,7 @@ ${makeGroup(nodeNames)}
   - name: "🎵 TikTok"
     type: url-test
     url: "https://www.tiktok.com"
-    interval: 600
+    interval: 1200
     tolerance: 100
     lazy: true
     proxies:
