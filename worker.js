@@ -236,6 +236,8 @@ sniffer:
     - '+.okx.cab'
     - '+.okex.org'
     - '+.binance.com'
+    - '+.google.com'
+    - '+.openai.com'
 
 dns:
   enable: true
@@ -276,6 +278,11 @@ dns:
     - '+.jd.com'
     - '+.microsoft.com'
     - '+.windowsupdate.com'
+    - 'gemini.google.com'
+    - 'aistudio.google.com'
+    - '*.googleapis.com'
+    - '*.googleusercontent.com'
+    - 'accounts.google.com'
 
   default-nameserver:
     - 1.1.1.1
@@ -330,6 +337,15 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
+  - name: "🤖 AI Services"
+    type: select
+    proxies:
+      - "🇯🇵 Japan"
+      - "🇸🇬 Singapore"
+      - "🌩️ CF 优选新加坡"
+      - "🇺🇸 USA"
+      - "🏮 Taiwan"
+
   - name: "💰 Crypto Services"
     type: url-test
     url: "https://www.binance.com"
@@ -341,15 +357,6 @@ ${makeGroup(nodeNames)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🌩️ CF 优选新加坡"
-
-  - name: "🤖 AI Services"
-    type: select
-    proxies:
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
-      - "🇺🇸 USA"
-      - "🏮 Taiwan"
 
   - name: "🎬 Media & Social"
     type: url-test
@@ -380,42 +387,42 @@ ${makeGroup(nodeNames)}
       - "🏮 Taiwan"
 
   - name: "🇭🇰 Hong Kong"
-    type: url-test
+    type: fallback
     url: https://www.google.com/generate_204
     interval: 600
     proxies:
 ${makeGroup(hk)}
 
   - name: "🌩️ CF 优选新加坡"
-    type: url-test
+    type: fallback
     url: https://www.google.com/generate_204
     interval: 600
     proxies:
 ${makeGroup(cflare)}
 
   - name: "🏮 Taiwan"
-    type: url-test
+    type: fallback
     url: https://www.google.com/generate_204
     interval: 600
     proxies:
 ${makeGroup(tw)}
 
   - name: "🇯🇵 Japan"
-    type: url-test
+    type: fallback
     url: https://www.google.com/generate_204
     interval: 600
     proxies:
 ${makeGroup(jp)}
 
   - name: "🇸🇬 Singapore"
-    type: url-test
+    type: fallback
     url: https://www.google.com/generate_204
     interval: 600
     proxies:
 ${makeGroup(sg)}
 
   - name: "🇺🇸 USA"
-    type: url-test
+    type: fallback
     url: https://www.google.com/generate_204
     interval: 600
     proxies:
