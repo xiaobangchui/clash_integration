@@ -343,11 +343,7 @@ ${makeGroup(nodeNames)}
       - "🌩️ CF 优选新加坡"
 
   - name: "🤖 AI Services"
-    type: url-test
-    url: "https://alkalimakersuite-pa.clients6.google.com/"
-    interval: 600
-    tolerance: 100
-    lazy: true
+    type: select
     proxies:
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
@@ -355,21 +351,7 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🏮 Taiwan"
 
-  - name: "📲 Social Media"
-    type: url-test
-    url: "https://api.twitter.com"
-    interval: 600
-    tolerance: 100
-    lazy: true
-    proxies:
-      - "🚀 Auto Speed"
-      - "🇭🇰 Hong Kong"
-      - "🌩️ CF 优选新加坡"
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🏮 Taiwan"
-
-  - name: "📹 Streaming"
+  - name: "🎬 Media & Social"
     type: url-test
     url: "https://www.youtube.com/generate_204"
     interval: 600
@@ -378,8 +360,8 @@ ${makeGroup(nodeNames)}
     proxies:
       - "🚀 Auto Speed"
       - "🇭🇰 Hong Kong"
-      - "🇸🇬 Singapore"
       - "🌩️ CF 优选新加坡"
+      - "🇸🇬 Singapore"
       - "🇯🇵 Japan"
       - "🇺🇸 USA"
       - "🏮 Taiwan"
@@ -658,15 +640,15 @@ rules:
 
   # 7. GEOSITE (完全恢复原始)
   - GEOSITE,google,🚀 Auto Speed
-  - GEOSITE,youtube,📹 Streaming
-  - GEOSITE,twitter,📲 Social Media
-  - GEOSITE,telegram,📲 Social Media
-  - GEOSITE,netflix,📹 Streaming
-  - GEOSITE,disney,📹 Streaming
-  - GEOSITE,facebook,📲 Social Media
-  - GEOSITE,instagram,📲 Social Media
+  - GEOSITE,youtube,🎬 Media & Social
+  - GEOSITE,twitter,🎬 Media & Social
+  - GEOSITE,telegram,🎬 Media & Social
+  - GEOSITE,netflix,🎬 Media & Social
+  - GEOSITE,disney,🎬 Media & Social
+  - GEOSITE,facebook,🎬 Media & Social
+  - GEOSITE,instagram,🎬 Media & Social
   
-  - GEOIP,telegram,📲 Social Media
+  - GEOIP,telegram,🎬 Media & Social
 
   # 7. Tiktok
   - DOMAIN-SUFFIX,tiktok.com,🎵 TikTok
