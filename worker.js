@@ -246,57 +246,30 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
+  # 💡 修正：只保留必须直连的。币安、OKX、Google、Gemini 全部移出此列表！
   fake-ip-filter:
-    - '+.okx.com'
-    - '+.okxcdn.com'
-    - '+.okx-dns.com'
-    - '+.okx-doh.com'
-    - '+.okx-httpdns.com'
-    - '+.okx.cab'
-    - '+.okex.org'
-    - '+.okex.com'
-    - '+.oklink.com'
-    - '+.binance.com'
-    - '+.metamask.io'
-    - '+.walletconnect.org'
-    - '+.telegram.org'
-    - '*.lan'
-    - '*.local'
+    - '+.lan'
+    - '+.local'
     - 'ntp.*.com'
-    - 'clients*.google.com'
     - 'connectivitycheck.gstatic.com'
     - 'detectportal.firefox.com'
-    - '+.douyin.com'
-    - '+.bytedance.com'
     - '+.baidu.com'
     - '+.qq.com'
-    - '+.alicdn.com'
-    - '+.aliyun.com'
     - '+.cn'
-    - '+.bilibili.com'
-    - '+.taobao.com'
-    - '+.jd.com'
-    - '+.microsoft.com'
-    - '+.windowsupdate.com'
-    - 'gemini.google.com'
-    - 'aistudio.google.com'
-    - '*.googleapis.com'
-    - '*.googleusercontent.com'
-    - 'accounts.google.com'
 
   default-nameserver:
-    - 1.1.1.1
     - 223.5.5.5
-    - 8.8.8.8
+    - 119.29.29.29
   
   nameserver:
-    - https://1.1.1.1/dns-query
-    - https://dns.google/dns-query
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
+    - 223.5.5.5
   
   fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
-    - 8.8.8.8
+    - tls://8.8.8.8:853
   
   fallback-filter:
     geoip: true
@@ -304,8 +277,10 @@ dns:
     ipcidr:
       - 240.0.0.0/4
 
+  # 💡 核心：强制指派解析路径，确保币安和 Gemini 走远端解析，国内走阿里
   nameserver-policy:
-    'geosite:cn,private': [https://dns.alidns.com/dns-query]
+    'geosite:cn,private': [https://dns.alidns.com/dns-query, 223.5.5.5]
+    'geosite:google,youtube,telegram,openai,gemini,binance,okx': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
 
   proxy-server-nameserver:
     - 223.5.5.5
