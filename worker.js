@@ -287,7 +287,7 @@ dns:
     - 119.29.29.29
 
 proxies:
-${nodes.join("\n")}
+${nodes.length > 0 ? nodes.join("\n") : "[]"}
 
 proxy-groups:
   - name: "🤖 AI Services"
@@ -517,7 +517,7 @@ rules:
 
   # 2. 阻断 UDP 443 (防 QUIC)
   # 说明：这是“稳定优先”策略，会牺牲部分 App 的 QUIC 性能。
-  - AND,((NETWORK,UDP),(DST-PORT,443)),REJECT
+  - AND,(NETWORK,UDP),(DST-PORT,443),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
 
@@ -534,13 +534,12 @@ rules:
   - DOMAIN,accounts.google.com,🇺🇸 USA
 
   # 2. Mac 邮件同步进程定向到美国 (仅限非中国 IP 流量)
-  - AND,((PROCESS-NAME,Mail),(NOT,((GEOIP,CN)))),🇺🇸 USA
-  - AND,((PROCESS-NAME,maild),(NOT,((GEOIP,CN)))),🇺🇸 USA
+  - AND,(PROCESS-NAME,Mail),(NOT,(GEOIP,CN)),🇺🇸 USA
+  - AND,(PROCESS-NAME,maild),(NOT,(GEOIP,CN)),🇺🇸 USA
 
   # 3. 邮件通用端口定向到美国 (仅桌面端 Mail 进程 + 非中国 IP)
   # 收窄范围，避免误伤其他邮件服务或非邮件应用。
-  - AND,((OR,((PROCESS-NAME,Mail),(PROCESS-NAME,maild))),(OR,((DST-PORT,993),(DST-PORT,465),(DST-PORT,587))),(NOT,((GEOIP,CN)))),🇺🇸 USA
-
+  - AND,(OR,(PROCESS-NAME,Mail),(PROCESS-NAME,maild)),(OR,(DST-PORT,993),(DST-PORT,465),(DST-PORT,587)),(NOT,(GEOIP,CN)),🇺🇸 USA
   # ===================================================
 
   # ===================================================
