@@ -277,10 +277,10 @@ dns:
     ipcidr:
       - 240.0.0.0/4
 
-  # 💡 核心：强制指派解析路径，确保币安和 Gemini 走远端解析，国内走阿里
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, 223.5.5.5]
-    'geosite:google,youtube,telegram,openai,gemini,binance,okx': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
+    'geosite:google,youtube,telegram': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
+    # 💡 我们保留了最稳的 Google/YT/TG 走国外 DNS，其他的走默认逻辑即可，不影响最终分流。
 
   proxy-server-nameserver:
     - 223.5.5.5
@@ -564,7 +564,7 @@ rules:
   - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
 
-  # 4. Crypto (完全恢复原始)
+  # 4. Crypto (清除了多余的 GEOSITE)
   - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
   - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
   - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
@@ -577,8 +577,6 @@ rules:
   - DOMAIN-SUFFIX,okex.org,💰 Crypto Services
   - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
   - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
-  - GEOSITE,okx,💰 Crypto Services
-  - GEOSITE,binance,💰 Crypto Services
   - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
   - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
   - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
