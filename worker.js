@@ -200,9 +200,9 @@ tcp-concurrent: false
 
 geodata-mode: true
 geox-url:
-  geoip: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat"
-  geosite: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat"
-  mmdb: "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb"
+  geoip: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat"
+  geosite: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat"
+  mmdb: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb"
 
 tun:
   enable: true
@@ -277,9 +277,6 @@ dns:
   fallback-filter:
     geoip: true
     geoip-code: CN
-    # 🌟 关键增强：
-    geosite:
-      - 'geosite:!cn'      # 只要不是明确标记为“中国大陆”的网站，都优先触发 fallback 逻辑
     ipcidr:
       - 240.0.0.0/4
       - 0.0.0.0/8
