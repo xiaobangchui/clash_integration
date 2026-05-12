@@ -256,9 +256,6 @@ dns:
     - '+.baidu.com'
     - '+.qq.com'
     - '+.cn'
-    - 'msftconnecttest.com' # 解决 Windows 网络图标感叹号
-    - 'msftncsi.com'
-    - 'speedtest.net'       # 测速不走 Fake-IP 以获得准确延迟
 
   default-nameserver:
     - 223.5.5.5
@@ -279,11 +276,6 @@ dns:
     geoip-code: CN
     ipcidr:
       - 240.0.0.0/4
-      - 0.0.0.0/8
-      - 127.0.0.0/8
-      - 10.0.0.0/8
-      - 172.16.0.0/12
-      - 192.168.0.0/16
 
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, 223.5.5.5]
@@ -701,7 +693,6 @@ rules:
       return new Response(yaml, {
         headers: {
           "Content-Type": "text/yaml; charset=utf-8",
-          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
           "Subscription-Userinfo": `upload=0;download=${summary.used};total=${summary.total};expire=${summary.expire}`,
           "Content-Disposition": "attachment; filename=clash_full_fixed.yaml"
         }
