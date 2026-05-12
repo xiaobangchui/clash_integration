@@ -256,6 +256,9 @@ dns:
     - '+.baidu.com'
     - '+.qq.com'
     - '+.cn'
+    - 'msftconnecttest.com' # 解决 Windows 网络图标感叹号
+    - 'msftncsi.com'
+    - 'speedtest.net'       # 测速不走 Fake-IP 以获得准确延迟
 
   default-nameserver:
     - 223.5.5.5
@@ -274,8 +277,16 @@ dns:
   fallback-filter:
     geoip: true
     geoip-code: CN
+    # 🌟 关键增强：
+    geosite:
+      - 'geosite:!cn'      # 只要不是明确标记为“中国大陆”的网站，都优先触发 fallback 逻辑
     ipcidr:
       - 240.0.0.0/4
+      - 0.0.0.0/8
+      - 127.0.0.0/8
+      - 10.0.0.0/8
+      - 172.16.0.0/12
+      - 192.168.0.0/16
 
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, 223.5.5.5]
@@ -520,6 +531,8 @@ rules:
   - AND,(NETWORK,UDP),(DST-PORT,443),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
+  - DOMAIN-SUFFIX,telemetry.microsoft.com,🛑 AdBlock
+  - DOMAIN-SUFFIX,stats.g.doubleclick.net,🛑 AdBlock
 
 # ===================================================
   # 🎯 Gmail 专用：强制走美国节点分组 (提高同步稳定性)
@@ -597,6 +610,10 @@ rules:
   - DOMAIN,makersuite.google.com,🤖 AI Services
   - DOMAIN,grok.x.com,🤖 AI Services
   - DOMAIN,alkalimakersuite-pa.clients6.google.com,🤖 AI Services
+  - DOMAIN-SUFFIX,gemini.gstatic.com,🤖 AI Services
+  - DOMAIN-SUFFIX,deepseek.com,🤖 AI Services
+  - DOMAIN-SUFFIX,claudestatic.com,🤖 AI Services
+  - DOMAIN-KEYWORD,openaicom,🤖 AI Services
   - DOMAIN-SUFFIX,generativelanguage.googleapis.com,🤖 AI Services
   - DOMAIN-SUFFIX,openai.com,🤖 AI Services
   - DOMAIN-SUFFIX,chatgpt.com,🤖 AI Services
@@ -618,6 +635,9 @@ rules:
   - DOMAIN-SUFFIX,github.io,🔰 Proxy Select
 
   # 7. GEOSITE (完全恢复原始)
+  - DOMAIN-KEYWORD,telegram,🎬 Media & Social
+  - DOMAIN-SUFFIX,t.me,🎬 Media & Social
+  - DOMAIN-SUFFIX,tdesktop.com,🎬 Media & Social
   - GEOSITE,google,🚀 Auto Speed
   - GEOSITE,youtube,🎬 Media & Social
   - GEOSITE,twitter,🎬 Media & Social
@@ -626,7 +646,6 @@ rules:
   - GEOSITE,disney,🎬 Media & Social
   - GEOSITE,facebook,🎬 Media & Social
   - GEOSITE,instagram,🎬 Media & Social
-  
   - GEOIP,telegram,🎬 Media & Social
 
   # 7. Tiktok
@@ -685,6 +704,7 @@ rules:
       return new Response(yaml, {
         headers: {
           "Content-Type": "text/yaml; charset=utf-8",
+          "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
           "Subscription-Userinfo": `upload=0;download=${summary.used};total=${summary.total};expire=${summary.expire}`,
           "Content-Disposition": "attachment; filename=clash_full_fixed.yaml"
         }
