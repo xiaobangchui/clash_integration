@@ -214,7 +214,7 @@ tun:
   mtu: 1500
 
 sniffer:
-  enable: false
+  enable: true
   parse-pure-ip: true
   override-destination: true
   sniff:
@@ -244,7 +244,7 @@ dns:
   listen: 0.0.0.0:53
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16
-  respect-rules: true
+  respect-rules: false
   
   # 💡 修正：只保留必须直连的。币安、OKX、Google、Gemini 全部移出此列表！
   fake-ip-filter:
@@ -507,7 +507,7 @@ rule-providers:
 
 rules:
   - GEOSITE,private,DIRECT
-  - GEOIP,private,DIRECT,no-resolve
+  - GEOIP,private,DIRECT
   - DOMAIN-SUFFIX,local,DIRECT
 
   # 2. 阻断 UDP 443 (防 QUIC)
