@@ -196,7 +196,7 @@ external-controller: 127.0.0.1:9090
 find-process-mode: strict
 udp: true
 unified-delay: true
-tcp-concurrent: false
+tcp-concurrent: true
 
 geodata-mode: true
 geox-url:
@@ -253,23 +253,18 @@ dns:
     - 'ntp.*.com'
     - 'connectivitycheck.gstatic.com'
     - 'detectportal.firefox.com'
-    - '+.baidu.com'
-    - '+.qq.com'
-    - '+.cn'
 
   default-nameserver:
-    - 223.5.5.5
-    - 119.29.29.29
+    - 1.1.1.1
+    - 8.8.8.8
   
   nameserver:
-    - https://dns.alidns.com/dns-query
-    - https://doh.pub/dns-query
-    - 223.5.5.5
-  
-  fallback:
     - https://1.1.1.1/dns-query
     - https://dns.google/dns-query
-    - tls://8.8.8.8:853
+  
+  fallback:
+    - https://dns.alidns.com/dns-query
+    - https://doh.pub/dns-query
   
   fallback-filter:
     geoip: true
@@ -301,7 +296,7 @@ proxy-groups:
 
   - name: "🚀 Auto Speed"
     type: url-test
-    url: https://cp.cloudflare.com/generate_204
+    url: https://www.google.com/generate_204
     interval: 1200
     tolerance: 100
     lazy: true
@@ -310,7 +305,7 @@ ${makeGroup(nodeNames)}
 
   - name: "📉 Auto Fallback"
     type: fallback
-    url: https://cp.cloudflare.com/generate_204
+    url: https://www.google.com/generate_204
     interval: 300
     lazy: true
     proxies:
@@ -517,7 +512,7 @@ rules:
 
   # 2. 阻断 UDP 443 (防 QUIC)
   # 说明：这是“稳定优先”策略，会牺牲部分 App 的 QUIC 性能。
-  - AND,(NETWORK,UDP),(DST-PORT,443),REJECT
+  # - AND,(NETWORK,UDP),(DST-PORT,443),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
   - DOMAIN-SUFFIX,telemetry.microsoft.com,🛑 AdBlock
