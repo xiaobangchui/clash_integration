@@ -214,7 +214,7 @@ tun:
   mtu: 1500
 
 sniffer:
-  enable: true
+  enable: false
   parse-pure-ip: true
   override-destination: true
   sniff:
