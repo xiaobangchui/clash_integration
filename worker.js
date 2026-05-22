@@ -11,7 +11,7 @@
 const CONFIG = {
   userAgent: "ClashMeta",
   fetchTimeout: 15000,
-  excludeKeywords: ["5x"],
+  excludeKeywords: ["5x","直连"],
   defaultToken: "25698",
   fetchConcurrency: 8,
   telegramTimeout: 10000
