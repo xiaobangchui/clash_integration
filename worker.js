@@ -56,15 +56,14 @@ export default {
         try {
           let targetUrl = subUrl;
           
-          // =================【2026 最终修复版逻辑】=================
-          // 去掉 encodeURIComponent，防止中文参数 ?name=牛逼 被二次转义成乱码
+          // 【2026 最终绝杀方案】放弃第三方中转，直接把非标端口重写为标准的 HTTPS 443 端口
           if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
-            targetUrl = `https://sub.id9.cc/sub?target=clash&url=${subUrl}`;
-            console.log(`${logPrefix} 触发特殊端口修复，原样拼接目标: ${targetUrl}`);
+            // 把 http:// 换成 https://，把 :5998 删掉（默认走 443 端口）
+            targetUrl = subUrl.replace("http://", "https://").replace(":5998", "");
+            console.log(`${logPrefix} 端口重写成功，直接请求官方标准端口: ${targetUrl}`);
           } else {
             console.log(`${logPrefix} 普通订阅源，直接发起请求`);
           }
-          // =======================================================
 
           const resp = await fetch(targetUrl, {
             headers: { "User-Agent": CONFIG.userAgent },
