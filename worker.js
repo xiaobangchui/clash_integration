@@ -11,6 +11,111 @@ const CONFIG = {
   telegramTimeout: 10000
 };
 
+// ====================== 辅助函数（已移到外部） ======================
+function mapWithConcurrency(items, limit, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (true) {
+      const current = nextIndex++;
+      if (current >= items.length) break;
+      results[current] = await mapper(items[current], current);
+    }
+  });
+  return Promise.all(workers).then(() => results);
+}
+
+function extractProxyBlocks(text) {
+  const lines = text.split('\n');
+  const blocks = [];
+  let inProxies = false;
+  let currentNode = "";
+
+  for (const line of lines) {
+    const trimmedRight = line.trimEnd();
+    const indent = line.match(/^\s*/)[0].length;
+
+    if (!inProxies) {
+      if (/^\s*proxies:\s*$/i.test(trimmedRight)) inProxies = true;
+      continue;
+    }
+
+    if (indent === 0 && /^[A-Za-z0-9_-]+:\s*$/.test(trimmedRight)) break;
+    if (!trimmedRight || trimmedRight.trimStart().startsWith('#')) continue;
+
+    if (/^\s*-\s+/.test(trimmedRight)) {
+      if (currentNode) blocks.push(currentNode);
+      currentNode = trimmedRight.trimStart();
+    } else if (currentNode) {
+      currentNode += "\n" + trimmedRight.trimStart();
+    }
+  }
+
+  if (currentNode) blocks.push(currentNode);
+  return blocks;
+}
+
+async function convertShareLinksToClash(rawText, logPrefix) {
+  const trimmed = rawText.trim();
+  if (!trimmed) return [];
+
+  const converters = [
+    `https://sub.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false`,
+    `https://sub.id9.cc/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`,
+    `https://bianyuan.xyz/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`
+  ];
+
+  for (const convertUrl of converters) {
+    try {
+      console.log(`${logPrefix} 尝试转换后端: ${convertUrl.substring(0, 70)}...`);
+      const response = await fetch(convertUrl, { 
+        signal: AbortSignal.timeout(18000) 
+      });
+      
+      if (response.ok) {
+        const clashYaml = await response.text();
+        if (clashYaml.length > 1000 && clashYaml.includes("proxies:")) {
+          console.log(`${logPrefix} ✅ 转换成功，YAML长度: ${clashYaml.length}`);
+          return extractProxyBlocks(clashYaml);
+        }
+      }
+    } catch (e) {
+      console.error(`${logPrefix} 转换失败:`, e.message);
+    }
+  }
+  
+  console.error(`${logPrefix} ❌ 所有转换后端均失败`);
+  return [];
+}
+
+function quoteYamlString(value) {
+  return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+function replaceNameField(raw, nextName) {
+  const nameFieldRegex = /(name:\s*)(?:"[^"]*"|'[^']*'|[^,\}\n]+)/;
+  return raw.replace(nameFieldRegex, `$1${quoteYamlString(nextName)}`);
+}
+
+function processNodeBlock(raw, nameCountMap, excludeRegex, nodes, nodeNames) {
+  const nameMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
+  if (nameMatch) {
+    let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
+    if (excludeRegex.test(originalName)) return;
+
+    let finalName = originalName;
+    let count = nameCountMap.get(originalName) || 0;
+    if (count > 0) {
+      finalName = `${originalName} [${count}]`;
+      raw = replaceNameField(raw, finalName);
+    }
+    nameCountMap.set(originalName, count + 1);
+    nodes.push("  " + raw.trim());
+    nodeNames.push(finalName);
+  }
+}
+
+// ====================== 主程序 ======================
 export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
@@ -25,6 +130,7 @@ export default {
     }
 
     if (url.pathname === "/health") return new Response("OK");
+
     try {
       const AIRPORT_URLS = env.SUB_URLS 
         ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
@@ -46,7 +152,7 @@ export default {
       let nodeNames = [];
       let nameCountMap = new Map(); 
       let airportDetails = [];     
-      let summary = { used: 0, total: 0, expire: Infinity, minRemainGB: Infinity };
+      let summary = { used: 0, total: 0, expire: Infinity };
       const excludeRegex = new RegExp(CONFIG.excludeKeywords.join('|'), 'i');
       const fetchConcurrency = Math.max(1, parseInt(env.FETCH_CONCURRENCY, 10) || CONFIG.fetchConcurrency);
 
@@ -56,18 +162,18 @@ export default {
         try {
           let targetUrl = subUrl;
           
-          // 【2026 最终绝杀方案】放弃第三方中转，直接把非标端口重写为标准的 HTTPS 443 端口
+          // 【2026 最终加强稳定版】专门处理 dazhutou 5998 端口订阅
           if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
-            // 把 http:// 换成 https://，把 :5998 删掉（默认走 443 端口）
-            targetUrl = subUrl.replace("http://", "https://").replace(":5998", "");
-            console.log(`${logPrefix} 端口重写成功，直接请求官方标准端口: ${targetUrl}`);
+            const encoded = encodeURIComponent(subUrl);
+            targetUrl = `https://sub.v1.mk/sub?target=clash&url=${encoded}&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online.ini`;
+            console.log(`${logPrefix} 🔧 使用 sub.v1.mk 转换非标端口订阅`);
           } else {
             console.log(`${logPrefix} 普通订阅源，直接发起请求`);
           }
 
           const resp = await fetch(targetUrl, {
             headers: { "User-Agent": CONFIG.userAgent },
-            signal: AbortSignal.timeout(CONFIG.fetchTimeout)
+            signal: AbortSignal.timeout(30000)
           });
 
           console.log(`${logPrefix} 请求返回状态码: ${resp.status} ${resp.statusText}`);
@@ -106,19 +212,18 @@ export default {
       const sourceFailed = AIRPORT_URLS.length - sourceSuccess;
       console.log(`[📊 抓取阶段结束] 成功: ${sourceSuccess}，失败: ${sourceFailed}`);
 
-      // 3. 解析节点 (兼容传统 YAML 和 Base64 链接)
+      // 3. 解析节点
       for (const res of results) {
         if (res) {
           let { text, originalUrl, index } = res;
           let proxyBlocks = [];
           const logPrefix = `[解析机场${index + 1}]`;
 
-          // 自动判定内容格式
           if (text.includes("proxies:")) {
             console.log(`${logPrefix} 检测到标准 Clash YAML 格式`);
             proxyBlocks = extractProxyBlocks(text);
           } else {
-            console.log(`${logPrefix} 未检测到 proxies 关键字，尝试 Base64 远程清洗或解析`);
+            console.log(`${logPrefix} 未检测到 proxies 关键字，尝试 Base64 远程转换`);
             proxyBlocks = await convertShareLinksToClash(text, logPrefix);
           }
 
@@ -126,101 +231,11 @@ export default {
 
           let initialNodeCount = nodes.length;
           for (const block of proxyBlocks) {
-            processNodeBlock(block);
+            processNodeBlock(block, nameCountMap, excludeRegex, nodes, nodeNames);
           }
           console.log(`${logPrefix} 实际有效导入节点数: ${nodes.length - initialNodeCount}`);
         }
       }
-
-    function mapWithConcurrency(items, limit, mapper) {
-      const results = new Array(items.length);
-      let nextIndex = 0;
-      const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
-        while (true) {
-          const current = nextIndex++;
-          if (current >= items.length) break;
-          results[current] = await mapper(items[current], current);
-        }
-      });
-      return Promise.all(workers).then(() => results);
-    }
-
-    function extractProxyBlocks(text) {
-      const lines = text.split('\n');
-      const blocks = [];
-      let inProxies = false;
-      let currentNode = "";
-
-      for (const line of lines) {
-        const trimmedRight = line.trimEnd();
-        const indent = line.match(/^\s*/)[0].length;
-
-        if (!inProxies) {
-          if (/^\s*proxies:\s*$/i.test(trimmedRight)) inProxies = true;
-          continue;
-        }
-
-        if (indent === 0 && /^[A-Za-z0-9_-]+:\s*$/.test(trimmedRight)) break;
-        if (!trimmedRight || trimmedRight.trimStart().startsWith('#')) continue;
-
-        if (/^\s*-\s+/.test(trimmedRight)) {
-          if (currentNode) blocks.push(currentNode);
-          currentNode = trimmedRight.trimStart();
-        } else if (currentNode) {
-          currentNode += "\n" + trimmedRight.trimStart();
-        }
-      }
-
-      if (currentNode) blocks.push(currentNode);
-      return blocks;
-    }
-
-    async function convertShareLinksToClash(rawText, logPrefix) {
-      const trimmed = rawText.trim();
-      if (!trimmed) return [];
-      
-      try {
-        const convertUrl = `https://sub.id9.cc/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`;
-        console.log(`${logPrefix} 正在向转换接口发送 Base64 串进行转换...`);
-        const response = await fetch(convertUrl, { signal: AbortSignal.timeout(10000) });
-        if (response.ok) {
-          const clashYaml = await response.text();
-          return extractProxyBlocks(clashYaml);
-        } else {
-          console.error(`${logPrefix} ❌ 远程 Base64 转换请求失败，状态码: ${response.status}`);
-        }
-      } catch (e) {
-        console.error(`${logPrefix} ❌ 远程转换发生致命异常:`, e.message || e);
-      }
-      return [];
-    }
-
-    function quoteYamlString(value) {
-      return `"${String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
-    }
-
-    function replaceNameField(raw, nextName) {
-      const nameFieldRegex = /(name:\s*)(?:"[^"]*"|'[^']*'|[^,\}\n]+)/;
-      return raw.replace(nameFieldRegex, `$1${quoteYamlString(nextName)}`);
-    }
-
-    function processNodeBlock(raw) {
-      const nameMatch = raw.match(/name:\s*(?:"([^"]*)"|'([^']*)'|([^,\}\n]+))/);
-      if (nameMatch) {
-        let originalName = (nameMatch[1] || nameMatch[2] || nameMatch[3]).trim();
-        if (excludeRegex.test(originalName)) return;
-
-        let finalName = originalName;
-        let count = nameCountMap.get(originalName) || 0;
-        if (count > 0) {
-          finalName = `${originalName} [${count}]`;
-          raw = replaceNameField(raw, finalName);
-        }
-        nameCountMap.set(originalName, count + 1);
-        nodes.push("  " + raw.trim());
-        nodeNames.push(finalName);
-      }
-    }
 
       // 4. 生成地区分组
       const makeGroup = (list) => list.length ? list.map(n => `      - ${quoteYamlString(n)}`).join("\n") : "      - DIRECT";
@@ -238,8 +253,8 @@ export default {
 
       console.log(`[⚙️ 组装阶段] 当前成功提取的总节点名字数: ${nodeNames.length}`);
 
-    // 5. 最终 YAML 
-    const yaml = `
+      // 5. 最终 YAML 
+      const yaml = `
 # 📊 流量汇总: ${usedGB}GB / ${totalGB}GB | 📅 到期: ${expireDate}
 ${airportDetails.join("\n")}
 
