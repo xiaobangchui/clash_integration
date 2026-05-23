@@ -58,8 +58,14 @@ export default {
       // 2. 并发抓取
       const results = await mapWithConcurrency(AIRPORT_URLS, fetchConcurrency, async (subUrl, index) => {
         try {
-          // 如果是普通的节点链接，有些需要特定 UA 才能下发，对普通连接允许回退
-          const resp = await fetch(subUrl, {
+          let targetUrl = subUrl;
+          
+          // 【核心修复】如果检测到是特殊非标准端口的 IP 链接，通过公开合法的通用转换接口进行标准 443 端口中转
+          if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
+            targetUrl = `https://sub.id9.cc/sub?target=clash&url=${encodeURIComponent(subUrl)}`;
+          }
+
+          const resp = await fetch(targetUrl, {
             headers: { "User-Agent": CONFIG.userAgent },
             signal: AbortSignal.timeout(CONFIG.fetchTimeout)
           });
@@ -82,7 +88,7 @@ export default {
           }
 
           const text = await resp.text();
-          return { text };
+          return { text, originalUrl: subUrl };
         } catch (e) { return null; }
       });
       const sourceSuccess = results.filter(Boolean).length;
