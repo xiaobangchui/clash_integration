@@ -59,25 +59,32 @@ async function convertShareLinksToClash(rawText, logPrefix) {
   const trimmed = rawText.trim();
   if (!trimmed) return [];
 
+  // 增加更多可靠后端
   const converters = [
-    `https://sub.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false`,
+    `https://sub.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online.ini`,
+    `https://api.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false`,
     `https://sub.id9.cc/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`,
-    `https://bianyuan.xyz/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`
+    `https://sub.dler.io/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`,
+    `https://sub.xeton.dev/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`
   ];
 
   for (const convertUrl of converters) {
     try {
-      console.log(`${logPrefix} 尝试转换后端: ${convertUrl.substring(0, 70)}...`);
+      console.log(`${logPrefix} 尝试转换后端: ${convertUrl.substring(0, 60)}...`);
       const response = await fetch(convertUrl, { 
-        signal: AbortSignal.timeout(18000) 
+        signal: AbortSignal.timeout(25000) 
       });
       
       if (response.ok) {
         const clashYaml = await response.text();
-        if (clashYaml.length > 1000 && clashYaml.includes("proxies:")) {
-          console.log(`${logPrefix} ✅ 转换成功，YAML长度: ${clashYaml.length}`);
+        if (clashYaml.length > 2000 && clashYaml.includes("proxies:")) {
+          console.log(`${logPrefix} ✅ 转换成功！YAML长度: ${clashYaml.length}`);
           return extractProxyBlocks(clashYaml);
+        } else {
+          console.log(`${logPrefix} 返回内容不符合要求，长度: ${clashYaml.length}`);
         }
+      } else {
+        console.log(`${logPrefix} 后端返回非200: ${response.status}`);
       }
     } catch (e) {
       console.error(`${logPrefix} 转换失败:`, e.message);
