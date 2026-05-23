@@ -56,13 +56,8 @@ export default {
         try {
           let targetUrl = subUrl;
           
-          // 如果检测到是特殊非标准端口的 IP 链接，尝试进行中转转换
-          if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
-            targetUrl = `https://sub.id9.cc/sub?target=clash&url=${encodeURIComponent(subUrl)}`;
-            console.log(`${logPrefix} 触发特殊端口/IP 规则，转换后请求目标: ${targetUrl}`);
-          } else {
-            console.log(`${logPrefix} 普通订阅源，直接发起请求`);
-          }
+          // 替换为这行：
+          console.log(`${logPrefix} 直接发起请求原始目标: ${targetUrl}`);
 
           const resp = await fetch(targetUrl, {
             headers: { "User-Agent": CONFIG.userAgent },
