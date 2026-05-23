@@ -56,8 +56,15 @@ export default {
         try {
           let targetUrl = subUrl;
           
-          // 替换为这行：
-          console.log(`${logPrefix} 直接发起请求原始目标: ${targetUrl}`);
+          // =================【2026 最终修复版逻辑】=================
+          // 去掉 encodeURIComponent，防止中文参数 ?name=牛逼 被二次转义成乱码
+          if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
+            targetUrl = `https://sub.id9.cc/sub?target=clash&url=${subUrl}`;
+            console.log(`${logPrefix} 触发特殊端口修复，原样拼接目标: ${targetUrl}`);
+          } else {
+            console.log(`${logPrefix} 普通订阅源，直接发起请求`);
+          }
+          // =======================================================
 
           const resp = await fetch(targetUrl, {
             headers: { "User-Agent": CONFIG.userAgent },
