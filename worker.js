@@ -59,32 +59,34 @@ async function convertShareLinksToClash(rawText, logPrefix) {
   const trimmed = rawText.trim();
   if (!trimmed) return [];
 
-  // 增加更多可靠后端
+  console.log(`${logPrefix} Base64原始长度: ${trimmed.length}`);
+
+  // 如果内容很短，可能是错误页面，直接放弃
+  if (trimmed.length < 5000) {
+    console.log(`${logPrefix} ⚠️ 内容过短，跳过转换`);
+    return [];
+  }
+
   const converters = [
-    `https://sub.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online.ini`,
-    `https://api.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false`,
-    `https://sub.id9.cc/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`,
-    `https://sub.dler.io/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`,
-    `https://sub.xeton.dev/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`
+    `https://sub.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}&insert=false`,
+    `https://api.v1.mk/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`,
+    `https://sub.id9.cc/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`
   ];
 
   for (const convertUrl of converters) {
     try {
-      console.log(`${logPrefix} 尝试转换后端: ${convertUrl.substring(0, 60)}...`);
+      console.log(`${logPrefix} → 尝试: ${convertUrl.substring(0, 60)}...`);
       const response = await fetch(convertUrl, { 
         signal: AbortSignal.timeout(25000) 
       });
       
       if (response.ok) {
         const clashYaml = await response.text();
-        if (clashYaml.length > 2000 && clashYaml.includes("proxies:")) {
-          console.log(`${logPrefix} ✅ 转换成功！YAML长度: ${clashYaml.length}`);
+        console.log(`${logPrefix} 返回长度: ${clashYaml.length}`);
+        if (clashYaml.length > 5000 && clashYaml.includes("proxies:")) {
+          console.log(`${logPrefix} ✅ 转换成功！`);
           return extractProxyBlocks(clashYaml);
-        } else {
-          console.log(`${logPrefix} 返回内容不符合要求，长度: ${clashYaml.length}`);
         }
-      } else {
-        console.log(`${logPrefix} 后端返回非200: ${response.status}`);
       }
     } catch (e) {
       console.error(`${logPrefix} 转换失败:`, e.message);
@@ -169,11 +171,12 @@ export default {
         try {
           let targetUrl = subUrl;
           
-          // 【2026 最终加强稳定版】专门处理 dazhutou 5998 端口订阅
+          // 【2026 最终修复版】dazhutou 特殊处理
           if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
             const encoded = encodeURIComponent(subUrl);
-            targetUrl = `https://sub.v1.mk/sub?target=clash&url=${encoded}&insert=false&config=https://raw.githubusercontent.com/ACL4SSR/ACL4SSR/master/Clash/config/ACL4SSR_Online.ini`;
-            console.log(`${logPrefix} 🔧 使用 sub.v1.mk 转换非标端口订阅`);
+            targetUrl = `https://sub.v1.mk/sub?target=clash&url=${encoded}&insert=false`;
+            
+            console.log(`${logPrefix} 🔧 dazhutou 专用转换（去掉 config 参数尝试）`);
           } else {
             console.log(`${logPrefix} 普通订阅源，直接发起请求`);
           }
