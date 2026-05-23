@@ -1,12 +1,5 @@
 /**
- * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·全兼容满血增强版)
- * 包含cf优选 
- * 📝 修改记录：
- * 1. [Fix] 完美兼容 Base64 / 节点明文 / Clash YAML 混合订阅源。
- * 2. [Security] 必须携带 ?token=25698 访问。
- * 3. [Performance] 并发抓取所有机场，速度提升 300%。
- * 4. [Integrity] 100% 恢复了用户提供的原始规则、DNS、TUN 配置，不进行删减。
- * 5. [Fix] 针对 Chrome 地址栏转圈优化了 fake-ip-filter 和 DNS 策略。
+ * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·全兼容满血增强版 - 调试日志版)
  */
 
 const CONFIG = {
@@ -37,6 +30,8 @@ export default {
         ? env.SUB_URLS.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean)
         : [];
 
+      console.log(`[🚀 开始运行] 检测到总订阅源数量: ${AIRPORT_URLS.length}`);
+
       if (AIRPORT_URLS.length === 0) {
         if (shouldNotifyTg) {
           ctx.waitUntil(sendTelegramErrorNotification(env, {
@@ -57,19 +52,29 @@ export default {
 
       // 2. 并发抓取
       const results = await mapWithConcurrency(AIRPORT_URLS, fetchConcurrency, async (subUrl, index) => {
+        const logPrefix = `[机场${index + 1}] [链接: ${subUrl.substring(0, 30)}...]`;
         try {
           let targetUrl = subUrl;
           
-          // 【核心修复】如果检测到是特殊非标准端口的 IP 链接，通过公开合法的通用转换接口进行标准 443 端口中转
+          // 如果检测到是特殊非标准端口的 IP 链接，尝试进行中转转换
           if (subUrl.includes(":5998") || /http:\/\/47\.115/.test(subUrl)) {
             targetUrl = `https://sub.id9.cc/sub?target=clash&url=${encodeURIComponent(subUrl)}`;
+            console.log(`${logPrefix} 触发特殊端口/IP 规则，转换后请求目标: ${targetUrl}`);
+          } else {
+            console.log(`${logPrefix} 普通订阅源，直接发起请求`);
           }
 
           const resp = await fetch(targetUrl, {
             headers: { "User-Agent": CONFIG.userAgent },
             signal: AbortSignal.timeout(CONFIG.fetchTimeout)
           });
-          if (!resp.ok) return null;
+
+          console.log(`${logPrefix} 请求返回状态码: ${resp.status} ${resp.statusText}`);
+
+          if (!resp.ok) {
+            console.error(`${logPrefix} ❌ 请求失败，状态码非 200`);
+            return null;
+          }
 
           const infoHeader = resp.headers.get("Subscription-Userinfo");
           if (infoHeader) {
@@ -88,30 +93,41 @@ export default {
           }
 
           const text = await resp.text();
-          return { text, originalUrl: subUrl };
-        } catch (e) { return null; }
+          console.log(`${logPrefix} ✅ 成功获取文本内容，长度: ${text.length} 字符`);
+          return { text, originalUrl: subUrl, index };
+        } catch (e) { 
+          console.error(`${logPrefix} 💥 抓取发生异常错误:`, e.message || e);
+          return null; 
+        }
       });
+      
       const sourceSuccess = results.filter(Boolean).length;
       const sourceFailed = AIRPORT_URLS.length - sourceSuccess;
+      console.log(`[📊 抓取阶段结束] 成功: ${sourceSuccess}，失败: ${sourceFailed}`);
 
       // 3. 解析节点 (兼容传统 YAML 和 Base64 链接)
       for (const res of results) {
         if (res) {
-          let { text } = res;
+          let { text, originalUrl, index } = res;
           let proxyBlocks = [];
+          const logPrefix = `[解析机场${index + 1}]`;
 
-          // 核心改动：自动判定内容格式
+          // 自动判定内容格式
           if (text.includes("proxies:")) {
-            // 传统的 Clash 格式
+            console.log(`${logPrefix} 检测到标准 Clash YAML 格式`);
             proxyBlocks = extractProxyBlocks(text);
           } else {
-            // 尝试进行 Base64 解码并转换为 Clash 节点块
-            proxyBlocks = await convertShareLinksToClash(text);
+            console.log(`${logPrefix} 未检测到 proxies 关键字，尝试 Base64 远程清洗或解析`);
+            proxyBlocks = await convertShareLinksToClash(text, logPrefix);
           }
 
+          console.log(`${logPrefix} 提取到节点块数量: ${proxyBlocks.length}`);
+
+          let initialNodeCount = nodes.length;
           for (const block of proxyBlocks) {
             processNodeBlock(block);
           }
+          console.log(`${logPrefix} 实际有效导入节点数: ${nodes.length - initialNodeCount}`);
         }
       }
 
@@ -158,24 +174,22 @@ export default {
       return blocks;
     }
 
-    // 新增：将普通节点链接 (ss://, vmess://) 远程借助公开订阅转换 API 转为 Clash YAML 格式块
-    async function convertShareLinksToClash(rawText) {
+    async function convertShareLinksToClash(rawText, logPrefix) {
       const trimmed = rawText.trim();
       if (!trimmed) return [];
       
       try {
-        // 使用一个无需注册且稳定的公开 subconverter 后端做协议清洗（仅处理不兼容的源）
-        const encodeUrl = encodeURIComponent(trimmed);
         const convertUrl = `https://sub.id9.cc/sub?target=clash&url=data:text/plain;base64,${btoa(unescape(encodeURIComponent(trimmed)))}`;
-        
+        console.log(`${logPrefix} 正在向转换接口发送 Base64 串进行转换...`);
         const response = await fetch(convertUrl, { signal: AbortSignal.timeout(10000) });
         if (response.ok) {
           const clashYaml = await response.text();
           return extractProxyBlocks(clashYaml);
+        } else {
+          console.error(`${logPrefix} ❌ 远程 Base64 转换请求失败，状态码: ${response.status}`);
         }
       } catch (e) {
-        // 如果远程转换失败，尝试本地兜底做极简解密（此处使用最稳妥的远程清洗）
-        console.error("Convert error:", e);
+        console.error(`${logPrefix} ❌ 远程转换发生致命异常:`, e.message || e);
       }
       return [];
     }
@@ -221,7 +235,9 @@ export default {
       const totalGB = (summary.total / (1024 ** 3)).toFixed(1);
       const expireDate = summary.expire === Infinity ? "长期" : new Date(summary.expire * 1000).toLocaleDateString("zh-CN");
 
-    // 5. 最终 YAML (融合原始完整规则 + 搜索优化修复)
+      console.log(`[⚙️ 组装阶段] 当前成功提取的总节点名字数: ${nodeNames.length}`);
+
+    // 5. 最终 YAML 
     const yaml = `
 # 📊 流量汇总: ${usedGB}GB / ${totalGB}GB | 📅 到期: ${expireDate}
 ${airportDetails.join("\n")}
@@ -697,6 +713,7 @@ rules:
         );
       }
 
+      console.log(`[🎉 运行成功] 最终组装的配置文件长度: ${yaml.length}`);
       return new Response(yaml, {
         headers: {
           "Content-Type": "text/yaml; charset=utf-8",
@@ -705,6 +722,7 @@ rules:
         }
       });
     } catch (error) {
+      console.error(`[❌ 运行崩溃] 全局捕获错误:`, error.message || error);
       if (shouldNotifyTg) {
         ctx.waitUntil(sendTelegramErrorNotification(env, {
           source: triggerSource,
