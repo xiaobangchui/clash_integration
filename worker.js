@@ -290,7 +290,6 @@ proxy-groups:
     proxies:
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
       - "🇺🇸 USA"
       - "🏮 Taiwan"
 
@@ -313,7 +312,7 @@ ${makeGroup(nodeNames)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
+      - "🌩️ CF官方优选"
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
@@ -327,7 +326,6 @@ ${makeGroup(nodeNames)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
 
   - name: "🎬 Media & Social"
     type: url-test
@@ -338,7 +336,7 @@ ${makeGroup(nodeNames)}
     proxies:
       - "🚀 Auto Speed"
       - "🇭🇰 Hong Kong"
-      - "🌩️ CF 优选新加坡"
+      - "🌩️ CF官方优选"
       - "🇸🇬 Singapore"
       - "🇯🇵 Japan"
       - "🇺🇸 USA"
@@ -352,7 +350,6 @@ ${makeGroup(nodeNames)}
     lazy: true
     proxies:
       - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
       - "🇺🇸 USA"
       - "🇯🇵 Japan"
       - "🏮 Taiwan"
@@ -364,7 +361,7 @@ ${makeGroup(nodeNames)}
     proxies:
 ${makeGroup(hk)}
 
-  - name: "🌩️ CF 优选新加坡"
+  - name: "🌩️ CF官方优选"
     type: fallback
     url: https://www.google.com/generate_204
     interval: 600
@@ -416,7 +413,7 @@ ${makeGroup(others)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
-      - "🌩️ CF 优选新加坡"
+      - "🌩️ CF官方优选"
       - "🌍 Others"
       - DIRECT
 
@@ -444,7 +441,7 @@ ${makeGroup(others)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🌩️ CF 优选新加坡"
+      - "🌩️ CF官方优选"
       - "🇺🇸 USA"
 
 rule-providers:
