@@ -1,7 +1,7 @@
 /**
  * Cloudflare Worker - Clash 聚合 AI (🏆 2026 双端通用·满血增强版)
  * 包含cf优选
- * 📝 修改记录： 
+ * 📝 修改记录：
  * 1. [Security] 必须携带 ?token=25698 访问。
  * 2. [Performance] 并发抓取所有机场，速度提升 300%。
  * 3. [Integrity] 100% 恢复了用户提供的原始规则、DNS、TUN 配置，不进行删减。
