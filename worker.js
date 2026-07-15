@@ -173,8 +173,7 @@ export default {
       const tw = nodeNames.filter(n => /(TW|Taiwan|台|台湾)/i.test(n));
       const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
       const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
-      const usa = nodeNames.filter(n => /(US|United|States|America|美|美国|🇺🇸)/i.test(n));
-      const cflare = nodeNames.filter(n => /(CF官方优选)/i.test(n));
+      const usa = nodeNames.filter(n => /(US|United|States|America|美|美国|🇺🇸|CF官方优选)/i.test(n));
       const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国)/i.test(n));
 
       const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
@@ -312,7 +311,6 @@ ${makeGroup(nodeNames)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🌩️ CF官方优选"
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
@@ -336,7 +334,6 @@ ${makeGroup(nodeNames)}
     proxies:
       - "🚀 Auto Speed"
       - "🇭🇰 Hong Kong"
-      - "🌩️ CF官方优选"
       - "🇸🇬 Singapore"
       - "🇯🇵 Japan"
       - "🇺🇸 USA"
@@ -360,13 +357,6 @@ ${makeGroup(nodeNames)}
     interval: 600
     proxies:
 ${makeGroup(hk)}
-
-  - name: "🌩️ CF官方优选"
-    type: fallback
-    url: https://www.google.com/generate_204
-    interval: 600
-    proxies:
-${makeGroup(cflare)}
 
   - name: "🏮 Taiwan"
     type: fallback
@@ -413,7 +403,6 @@ ${makeGroup(others)}
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
-      - "🌩️ CF官方优选"
       - "🌍 Others"
       - DIRECT
 
@@ -441,7 +430,6 @@ ${makeGroup(others)}
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
       - "🇸🇬 Singapore"
-      - "🌩️ CF官方优选"
       - "🇺🇸 USA"
 
 rule-providers:
