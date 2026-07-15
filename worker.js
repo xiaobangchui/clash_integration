@@ -314,42 +314,42 @@ ${makeGroup(nodeNames)}
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
 
-  - name: "💰 Crypto Services"
-    type: url-test
-    url: "https://www.binance.com"
-    interval: 1200
-    tolerance: 100
-    lazy: true
-    proxies:
-      - "🏮 Taiwan"
-      - "🇯🇵 Japan"
-      - "🇸🇬 Singapore"
+  // - name: "💰 Crypto Services"
+  //   type: url-test
+  //   url: "https://www.binance.com"
+  //   interval: 1200
+  //   tolerance: 100
+  //   lazy: true
+  //   proxies:
+  //     - "🏮 Taiwan"
+  //     - "🇯🇵 Japan"
+  //     - "🇸🇬 Singapore"
 
-  - name: "🎬 Media & Social"
-    type: url-test
-    url: "https://www.youtube.com/generate_204"
-    interval: 1200
-    tolerance: 100
-    lazy: true
-    proxies:
-      - "🚀 Auto Speed"
-      - "🇭🇰 Hong Kong"
-      - "🇸🇬 Singapore"
-      - "🇯🇵 Japan"
-      - "🇺🇸 USA"
-      - "🏮 Taiwan"
+  // - name: "🎬 Media & Social"
+  //   type: url-test
+  //   url: "https://www.youtube.com/generate_204"
+  //   interval: 1200
+  //   tolerance: 100
+  //   lazy: true
+  //   proxies:
+  //     - "🚀 Auto Speed"
+  //     - "🇭🇰 Hong Kong"
+  //     - "🇸🇬 Singapore"
+  //     - "🇯🇵 Japan"
+  //     - "🇺🇸 USA"
+  //     - "🏮 Taiwan"
 
-  - name: "🎵 TikTok"
-    type: url-test
-    url: "https://www.tiktok.com"
-    interval: 1200
-    tolerance: 100
-    lazy: true
-    proxies:
-      - "🇸🇬 Singapore"
-      - "🇺🇸 USA"
-      - "🇯🇵 Japan"
-      - "🏮 Taiwan"
+  // - name: "🎵 TikTok"
+  //   type: url-test
+  //   url: "https://www.tiktok.com"
+  //   interval: 1200
+  //   tolerance: 100
+  //   lazy: true
+  //   proxies:
+  //     - "🇸🇬 Singapore"
+  //     - "🇺🇸 USA"
+  //     - "🇯🇵 Japan"
+  //     - "🏮 Taiwan"
 
   - name: "🇭🇰 Hong Kong"
     type: fallback
@@ -547,30 +547,30 @@ rules:
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
 
   # 4. Crypto (清除了多余的 GEOSITE)
-  - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
-  - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okxcdn.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx-doh.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,okx.cab,💰 Crypto Services
-  - DOMAIN-SUFFIX,okex.org,💰 Crypto Services
-  - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
-  - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,htx.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,kucoin.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,mexc.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,kraken.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,coinbase.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,coinmarketcap.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,coingecko.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
-  - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
+  // - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
+  // - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okxcdn.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okx-doh.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okx.cab,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okex.org,💰 Crypto Services
+  // - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
+  // - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,htx.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,kucoin.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,mexc.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,kraken.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,coinbase.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,coinmarketcap.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,coingecko.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
+  // - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
 
   # 5. AI Services (完全恢复原始)
   - DOMAIN,ai.google.dev,🤖 AI Services
@@ -604,24 +604,24 @@ rules:
   - DOMAIN-SUFFIX,github.io,🔰 Proxy Select
 
   # 7. GEOSITE (完全恢复原始)
-  - DOMAIN-KEYWORD,telegram,🎬 Media & Social
-  - DOMAIN-SUFFIX,t.me,🎬 Media & Social
-  - DOMAIN-SUFFIX,tdesktop.com,🎬 Media & Social
-  - GEOSITE,google,🚀 Auto Speed
-  - GEOSITE,youtube,🎬 Media & Social
-  - GEOSITE,twitter,🎬 Media & Social
-  - GEOSITE,telegram,🎬 Media & Social
-  - GEOSITE,netflix,🎬 Media & Social
-  - GEOSITE,disney,🎬 Media & Social
-  - GEOSITE,facebook,🎬 Media & Social
-  - GEOSITE,instagram,🎬 Media & Social
-  - GEOIP,telegram,🎬 Media & Social
+  // - DOMAIN-KEYWORD,telegram,🎬 Media & Social
+  // - DOMAIN-SUFFIX,t.me,🎬 Media & Social
+  // - DOMAIN-SUFFIX,tdesktop.com,🎬 Media & Social
+  // - GEOSITE,google,🚀 Auto Speed
+  // - GEOSITE,youtube,🎬 Media & Social
+  // - GEOSITE,twitter,🎬 Media & Social
+  // - GEOSITE,telegram,🎬 Media & Social
+  // - GEOSITE,netflix,🎬 Media & Social
+  // - GEOSITE,disney,🎬 Media & Social
+  // - GEOSITE,facebook,🎬 Media & Social
+  // - GEOSITE,instagram,🎬 Media & Social
+  // - GEOIP,telegram,🎬 Media & Social
 
   # 7. Tiktok
-  - DOMAIN-SUFFIX,tiktok.com,🎵 TikTok
-  - DOMAIN-SUFFIX,tiktokv.com,🎵 TikTok
-  - DOMAIN-SUFFIX,byteoversea.com,🎵 TikTok
-  - DOMAIN-SUFFIX,ttlivecdn.com,🎵 TikTok
+  // - DOMAIN-SUFFIX,tiktok.com,🎵 TikTok
+  // - DOMAIN-SUFFIX,tiktokv.com,🎵 TikTok
+  // - DOMAIN-SUFFIX,byteoversea.com,🎵 TikTok
+  // - DOMAIN-SUFFIX,ttlivecdn.com,🎵 TikTok
 
   # 9. Apple & Microsoft (完全恢复原始)
   - GEOSITE,apple,🍎 Apple Services
