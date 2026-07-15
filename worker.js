@@ -223,7 +223,6 @@ sniffer:
       ports: [80, 8080-8880]
     QUIC: 
       ports: [443, 8443]
-  # 增加下面这段：跳过对 OKX 域名的嗅探
   skip-domain:
     - '+.okx.com'
     - '+.okex.com'
@@ -245,7 +244,6 @@ dns:
   fake-ip-range: 198.18.0.1/16
   respect-rules: true
   
-  # 💡 修正：只保留必须直连的。币安、OKX、Google、Gemini 全部移出此列表！
   fake-ip-filter:
     - '+.lan'
     - '+.local'
@@ -274,7 +272,6 @@ dns:
   nameserver-policy:
     'geosite:cn,private': [https://dns.alidns.com/dns-query, 223.5.5.5]
     'geosite:google,youtube,telegram': [https://dns.google/dns-query, https://1.1.1.1/dns-query]
-    # 💡 我们保留了最稳的 Google/YT/TG 走国外 DNS，其他的走默认逻辑即可，不影响最终分流。
 
   proxy-server-nameserver:
     - 223.5.5.5
@@ -313,43 +310,6 @@ ${makeGroup(nodeNames)}
       - "🇸🇬 Singapore"
       - "🇺🇸 USA"
       - "🚀 Auto Speed"
-
-  // - name: "💰 Crypto Services"
-  //   type: url-test
-  //   url: "https://www.binance.com"
-  //   interval: 1200
-  //   tolerance: 100
-  //   lazy: true
-  //   proxies:
-  //     - "🏮 Taiwan"
-  //     - "🇯🇵 Japan"
-  //     - "🇸🇬 Singapore"
-
-  // - name: "🎬 Media & Social"
-  //   type: url-test
-  //   url: "https://www.youtube.com/generate_204"
-  //   interval: 1200
-  //   tolerance: 100
-  //   lazy: true
-  //   proxies:
-  //     - "🚀 Auto Speed"
-  //     - "🇭🇰 Hong Kong"
-  //     - "🇸🇬 Singapore"
-  //     - "🇯🇵 Japan"
-  //     - "🇺🇸 USA"
-  //     - "🏮 Taiwan"
-
-  // - name: "🎵 TikTok"
-  //   type: url-test
-  //   url: "https://www.tiktok.com"
-  //   interval: 1200
-  //   tolerance: 100
-  //   lazy: true
-  //   proxies:
-  //     - "🇸🇬 Singapore"
-  //     - "🇺🇸 USA"
-  //     - "🇯🇵 Japan"
-  //     - "🏮 Taiwan"
 
   - name: "🇭🇰 Hong Kong"
     type: fallback
@@ -397,7 +357,6 @@ ${makeGroup(others)}
       - "🚀 Auto Speed"
       - "🇭🇰 Hong Kong"
       - "📉 Auto Fallback"
-      - "💰 Crypto Services"
       - "🤖 AI Services"
       - "🏮 Taiwan"
       - "🇯🇵 Japan"
@@ -495,19 +454,11 @@ rules:
   - GEOIP,private,DIRECT,no-resolve
   - DOMAIN-SUFFIX,local,DIRECT
 
-  # 2. 阻断 UDP 443 (防 QUIC)
-  # 说明：这是“稳定优先”策略，会牺牲部分 App 的 QUIC 性能。
-  # - AND,(NETWORK,UDP),(DST-PORT,443),REJECT
   - RULE-SET,Reject,🛑 AdBlock
   - GEOSITE,category-ads-all,🛑 AdBlock
   - DOMAIN-SUFFIX,telemetry.microsoft.com,🛑 AdBlock
   - DOMAIN-SUFFIX,stats.g.doubleclick.net,🛑 AdBlock
 
-# ===================================================
-  # 🎯 Gmail 专用：强制走美国节点分组 (提高同步稳定性)
-  # ===================================================
-  
-  # 1. 核心域名定向到美国
   - DOMAIN-SUFFIX,gmail.com,🇺🇸 USA
   - DOMAIN-SUFFIX,googlemail.com,🇺🇸 USA
   - DOMAIN,imap.gmail.com,🇺🇸 USA
@@ -515,17 +466,10 @@ rules:
   - DOMAIN,pop.gmail.com,🇺🇸 USA
   - DOMAIN,accounts.google.com,🇺🇸 USA
 
-  # 2. Mac 邮件同步进程定向到美国 (仅限非中国 IP 流量)
   - AND,(PROCESS-NAME,Mail),(NOT,((GEOIP,CN))),🇺🇸 USA
   - AND,(PROCESS-NAME,maild),(NOT,((GEOIP,CN))),🇺🇸 USA
-
-  # 3. 邮件通用端口定向到美国 (仅桌面端 Mail 进程 + 非中国 IP)
   - AND,(OR,(PROCESS-NAME,Mail),(PROCESS-NAME,maild)),(OR,(DST-PORT,993),(DST-PORT,465),(DST-PORT,587)),(NOT,((GEOIP,CN))),🇺🇸 USA
-  # ===================================================
 
-  # ===================================================
-  # 3. 微软/OneDrive/商店 专用修正策略 (完全恢复原始)
-  # ===================================================
   - DOMAIN,graph.microsoft.com,🔰 Proxy Select
   - DOMAIN,login.microsoftonline.com,🔰 Proxy Select
   - DOMAIN,login.live.com,🔰 Proxy Select
@@ -536,7 +480,6 @@ rules:
   - DOMAIN-SUFFIX,sharepoint.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,neat-reader.com,🔰 Proxy Select
 
-  # 说明：PROCESS-NAME 规则主要对桌面端有效，移动端通常不生效。
   - PROCESS-NAME,OneDrive.exe,DIRECT
   - PROCESS-NAME,OneDriveStandaloneUpdater.exe,DIRECT
   - PROCESS-NAME,WinStore.App.exe,DIRECT
@@ -546,33 +489,6 @@ rules:
   - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
 
-  # 4. Crypto (清除了多余的 GEOSITE)
-  // - DOMAIN-SUFFIX,binance.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,binance.me,💰 Crypto Services
-  // - DOMAIN-SUFFIX,bnbstatic.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okx.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okxcdn.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okx-dns.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okx-doh.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okx-httpdns.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okx.cab,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okex.org,💰 Crypto Services
-  // - DOMAIN-SUFFIX,okex.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,oklink.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,bybit.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,gate.io,💰 Crypto Services
-  // - DOMAIN-SUFFIX,huobi.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,htx.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,kucoin.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,mexc.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,kraken.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,coinbase.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,coinmarketcap.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,coingecko.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,tradingview.com,💰 Crypto Services
-  // - DOMAIN-SUFFIX,metamask.io,💰 Crypto Services
-
-  # 5. AI Services (完全恢复原始)
   - DOMAIN,ai.google.dev,🤖 AI Services
   - DOMAIN,gemini.google.com,🤖 AI Services
   - DOMAIN,aistudio.google.com,🤖 AI Services
@@ -596,48 +512,23 @@ rules:
   - DOMAIN-SUFFIX,x.ai,🤖 AI Services
   - DOMAIN-SUFFIX,perplexity.ai,🤖 AI Services
 
-  # 6. GitHub (完全恢复原始)
   - DOMAIN-SUFFIX,copilot-proxy.githubusercontent.com,🤖 AI Services
   - DOMAIN-SUFFIX,githubcopilot.com,🤖 AI Services
   - DOMAIN-SUFFIX,github.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,githubusercontent.com,🔰 Proxy Select
   - DOMAIN-SUFFIX,github.io,🔰 Proxy Select
 
-  # 7. GEOSITE (完全恢复原始)
-  // - DOMAIN-KEYWORD,telegram,🎬 Media & Social
-  // - DOMAIN-SUFFIX,t.me,🎬 Media & Social
-  // - DOMAIN-SUFFIX,tdesktop.com,🎬 Media & Social
-  // - GEOSITE,google,🚀 Auto Speed
-  // - GEOSITE,youtube,🎬 Media & Social
-  // - GEOSITE,twitter,🎬 Media & Social
-  // - GEOSITE,telegram,🎬 Media & Social
-  // - GEOSITE,netflix,🎬 Media & Social
-  // - GEOSITE,disney,🎬 Media & Social
-  // - GEOSITE,facebook,🎬 Media & Social
-  // - GEOSITE,instagram,🎬 Media & Social
-  // - GEOIP,telegram,🎬 Media & Social
-
-  # 7. Tiktok
-  // - DOMAIN-SUFFIX,tiktok.com,🎵 TikTok
-  // - DOMAIN-SUFFIX,tiktokv.com,🎵 TikTok
-  // - DOMAIN-SUFFIX,byteoversea.com,🎵 TikTok
-  // - DOMAIN-SUFFIX,ttlivecdn.com,🎵 TikTok
-
-  # 9. Apple & Microsoft (完全恢复原始)
   - GEOSITE,apple,🍎 Apple Services
   - GEOSITE,microsoft,DIRECT
 
-  # 10. 游戏下载 (完全恢复原始)
   - GEOSITE,steam@cn,DIRECT
   - GEOSITE,category-games@cn,DIRECT
 
-  # 11. 软件官网 (完全恢复原始)
   - DOMAIN-SUFFIX,qbittorrent.org,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.net,🔰 Proxy Select
   - DOMAIN-SUFFIX,sourceforge.io,🔰 Proxy Select
   - DOMAIN-SUFFIX,google.com,🔰 Proxy Select
 
-  # 12. 直连 (完全恢复原始)
   - DOMAIN-SUFFIX,bilibili.com,DIRECT
   - DOMAIN-SUFFIX,taobao.com,DIRECT
   - DOMAIN-SUFFIX,jd.com,DIRECT
