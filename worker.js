@@ -174,7 +174,7 @@ export default {
       const jp = nodeNames.filter(n => /(JP|Japan|日|日本)/i.test(n));
       const sg = nodeNames.filter(n => /(SG|Singapore|狮城|新|新加坡)/i.test(n));
       const usa = nodeNames.filter(n => /(US|United|States|America|美|美国|🇺🇸|CF官方优选)/i.test(n));
-      const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国|CF官方优选)/i.test(n));
+      const others = nodeNames.filter(n => !/(HK|Hong|Kong|港|香港|TW|Taiwan|台|台湾|JP|Japan|日|日本|SG|Singapore|狮城|新|新加坡|US|United|States|America|美|美国|🇺🇸|CF官方优选)/i.test(n));
 
       const usedGB = (summary.used / (1024 ** 3)).toFixed(1);
       const totalGB = (summary.total / (1024 ** 3)).toFixed(1);
