@@ -488,7 +488,7 @@ rules:
   - DOMAIN-SUFFIX,delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,tlu.dl.delivery.mp.microsoft.com,DIRECT
   - DOMAIN-SUFFIX,assets.msn.com,DIRECT
-  - DOMAIN-SUFFIX,*.abailing.com,DIRECT
+  - DOMAIN-SUFFIX,abailing.com,DIRECT
 
   - DOMAIN,ai.google.dev,🤖 AI Services
   - DOMAIN,gemini.google.com,🤖 AI Services
